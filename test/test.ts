@@ -14,7 +14,7 @@ function printTree<K, V>(tree: RBNode<K, V> | undefined): any {
 		return []
 	}
 	return [
-		COLORS[tree._color],
+		COLORS[tree.color],
 		tree.key,
 		printTree(tree.left),
 		printTree(tree.right),
@@ -30,32 +30,32 @@ function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
 	if (!tree.root) {
 		return
 	}
-	t.equals(tree.root._color, 1, "root is black")
+	t.equals(tree.root.color, 1, "root is black")
 	function checkNode(node: RBNode<K, V> | undefined): [number, number] {
 		if (!node) {
 			return [1, 0]
 		}
-		if (node._color === 0) {
+		if (node.color === 0) {
 			t.assert(
-				!node.left || node.left._color === 1,
+				!node.left || node.left.color === 1,
 				"children of red node must be black"
 			)
 			t.assert(
-				!node.right || node.right._color === 1,
+				!node.right || node.right.color === 1,
 				"children of red node must be black"
 			)
 		} else {
-			t.equals(node._color, 1, "node color must be red or black")
+			t.equals(node.color, 1, "node color must be red or black")
 		}
 		if (node.left) {
 			t.assert(
-				tree._compare(node.left.key, node.key) <= 0,
+				tree.compare(node.left.key, node.key) <= 0,
 				"left tree order invariant"
 			)
 		}
 		if (node.right) {
 			t.assert(
-				tree._compare(node.right.key, node.key) >= 0,
+				tree.compare(node.right.key, node.key) >= 0,
 				"right tree order invariant"
 			)
 		}
@@ -66,8 +66,8 @@ function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
 			cr[0],
 			"number of black nodes along all paths to root must be constant"
 		)
-		t.equals(cl[1] + cr[1] + 1, node._count, "item count consistency")
-		return [cl[0] + node._color, cl[1] + cr[1] + 1]
+		t.equals(cl[1] + cr[1] + 1, node.count, "item count consistency")
+		return [cl[0] + node.color, cl[1] + cr[1] + 1]
 	}
 	var r = checkNode(tree.root)
 	t.equals(r[1], tree.length, "tree length")
