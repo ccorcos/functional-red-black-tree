@@ -30,36 +30,37 @@ let BLACK = 1 as const
 export class RBNode<K, V> {
 	// TODO: make these all readonly
 	// TODO: then sets can use the k/v store.
-	constructor(
-		public color: 1 | 0,
-		public key: K,
-		public value: V,
-		public left: RBNode<K, V> | undefined,
-		public right: RBNode<K, V> | undefined,
-		public count: number
-	) {}
+
+	public color: 1 | 0
+	public key: K
+	public value: V
+	public left: RBNode<K, V> | undefined
+	public right: RBNode<K, V> | undefined
+	public count: number
+
+	constructor(args: {
+		color: 1 | 0
+		key: K
+		value: V
+		left: RBNode<K, V> | undefined
+		right: RBNode<K, V> | undefined
+		count: number
+	}) {
+		this.color = args.color
+		this.key = args.key
+		this.value = args.value
+		this.left = args.left
+		this.right = args.right
+		this.count = args.count
+	}
 }
 
 function cloneNode<K, V>(node: RBNode<K, V>) {
-	return new RBNode(
-		node.color,
-		node.key,
-		node.value,
-		node.left,
-		node.right,
-		node.count
-	)
+	return new RBNode(node)
 }
 
 function repaint<K, V>(color: 1 | 0, node: RBNode<K, V>) {
-	return new RBNode(
-		color,
-		node.key,
-		node.value,
-		node.left,
-		node.right,
-		node.count
-	)
+	return new RBNode({ ...node, color })
 }
 
 function recount<K, V>(node: RBNode<K, V>) {
@@ -115,27 +116,30 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		//Rebuild path to leaf node
-		n_stack.push(new RBNode(RED, key, value, undefined, undefined, 1))
+		n_stack.push(
+			new RBNode({
+				color: RED,
+				key,
+				value,
+				left: undefined,
+				right: undefined,
+				count: 1,
+			})
+		)
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
 			if (d_stack[s] <= 0) {
-				n_stack[s] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					n_stack[s + 1],
-					n.right,
-					n.count + 1
-				)
+				n_stack[s] = new RBNode({
+					...n,
+					left: n_stack[s + 1],
+					count: n.count + 1,
+				})
 			} else {
-				n_stack[s] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					n.left,
-					n_stack[s + 1],
-					n.count + 1
-				)
+				n_stack[s] = new RBNode({
+					...n,
+					right: n_stack[s + 1],
+					count: n.count + 1,
+				})
 			}
 		}
 		//Rebalance tree using rotations
@@ -590,34 +594,19 @@ export class RedBlackTreeIterator<K, V> {
 		//First copy path to node
 		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = new RBNode(
-			n.color,
-			n.key,
-			n.value,
-			n.left,
-			n.right,
-			n.count
-		)
+		cstack[cstack.length - 1] = new RBNode(n)
 		for (let i = stack.length - 2; i >= 0; --i) {
 			let n = stack[i]
 			if (n.left === stack[i + 1]) {
-				cstack[i] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					cstack[i + 1],
-					n.right,
-					n.count
-				)
+				cstack[i] = new RBNode({
+					...n,
+					left: cstack[i + 1],
+				})
 			} else {
-				cstack[i] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					n.left,
-					cstack[i + 1],
-					n.count
-				)
+				cstack[i] = new RBNode({
+					...n,
+					right: cstack[i + 1],
+				})
 			}
 		}
 
@@ -638,21 +627,17 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			//Copy path to leaf
 			let v = cstack[split - 1]
-			cstack.push(new RBNode(n.color, v.key, v.value, n.left, n.right, n.count))
+			cstack.push(new RBNode(n))
 			cstack[split - 1].key = n.key
 			cstack[split - 1].value = n.value
 
 			//Fix up stack
 			for (let i = cstack.length - 2; i >= split; --i) {
 				n = cstack[i]
-				cstack[i] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					n.left,
-					cstack[i + 1],
-					n.count
-				)
+				cstack[i] = new RBNode({
+					...n,
+					right: cstack[i + 1],
+				})
 			}
 			cstack[split - 1].left = cstack[split]
 		}
@@ -816,34 +801,22 @@ export class RedBlackTreeIterator<K, V> {
 		}
 		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = new RBNode(
-			n.color,
-			n.key,
+		cstack[cstack.length - 1] = new RBNode({
+			...n,
 			value,
-			n.left,
-			n.right,
-			n.count
-		)
+		})
 		for (let i = stack.length - 2; i >= 0; --i) {
 			n = stack[i]
 			if (n.left === stack[i + 1]) {
-				cstack[i] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					cstack[i + 1],
-					n.right,
-					n.count
-				)
+				cstack[i] = new RBNode({
+					...n,
+					left: cstack[i + 1],
+				})
 			} else {
-				cstack[i] = new RBNode(
-					n.color,
-					n.key,
-					n.value,
-					n.left,
-					cstack[i + 1],
-					n.count
-				)
+				cstack[i] = new RBNode({
+					...n,
+					right: cstack[i + 1],
+				})
 			}
 		}
 		return new RedBlackTree(this.tree.compare, cstack[0])
