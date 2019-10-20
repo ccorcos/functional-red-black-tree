@@ -1,7 +1,35 @@
+/*
+
+Game Plan:
+- [x] convert to typescript.
+- [ ] persist to a key-value map.
+- [ ] persist to leveldb.
+
+*/
+
+class KeyValueStore<V> {
+	map: Record<string, V> = {}
+	get(key: string): V | undefined {
+		return this.map[key]
+	}
+	set(key: string, value: V): void {
+		this.map[key] = value
+	}
+	delete(key: string): void {
+		delete this.map[key]
+	}
+}
+
+function randomId() {
+	return Math.round(Math.random() * 1e10).toString()
+}
+
 let RED = 0 as const
 let BLACK = 1 as const
 
 export class RBNode<K, V> {
+	// TODO: make these all readonly
+	// TODO: then sets can use the k/v store.
 	constructor(
 		public _color: 1 | 0,
 		public key: K,
