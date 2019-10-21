@@ -228,7 +228,11 @@ function compareIterators<K, V>(
 	if (!b.valid) {
 		return
 	}
-	t.equals(a.node, b.node, "iter node")
+	t.equals(
+		a.node ? a.node.id : undefined,
+		b.node ? b.node.id : undefined,
+		"iter node"
+	)
 	t.equals(a.key, b.key, "iter key")
 	t.equals(a.value, b.value, "iter value")
 	t.equals(a.index, b.index, "iter index")
