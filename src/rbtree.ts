@@ -7,8 +7,14 @@ Game Plan:
 
 */
 
-class KeyValueStore<K, V> {
-	map: Record<string, V> = {}
+interface KeyValueStore<K, V> {
+	get(key: K): V | undefined
+	set(key: K, value: V): void
+	delete(key: K): void
+}
+
+class InMemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
+	private map: Record<string, V> = {}
 	get(key: K): V | undefined {
 		return this.map[JSON.stringify(key)]
 	}
@@ -20,39 +26,62 @@ class KeyValueStore<K, V> {
 	}
 }
 
-class RBNodeCache<K, V> extends KeyValueStore<string, RBNode<K, V>> {
-	cache: Record<string, RBNode<K, V>> = {}
+class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
+	private cache: Record<string, RBNode<K, V>> = {}
+	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
 
 	get(key: string): RBNode<K, V> | undefined {
-		const value = super.get(key)
+		const value = this.store.get(key)
 		if (value !== undefined) {
 			this.cache[key] = value
 		}
 		return value
 	}
 	set(key: string, value: RBNode<K, V>): void {
-		super.set(key, value)
+		this.store.set(key, value)
 		this.cache[key] = value
 	}
 	delete(key: string): void {
-		super.delete(key)
+		this.store.delete(key)
 		delete this.cache[key]
 	}
 }
 
-class RBNodeTransaction<K, V> extends RBNodeCache<K, V> {
-	transaction: Record<
+class RBNodeTransaction<K, V> implements KeyValueStore<string, RBNode<K, V>> {
+	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
+
+	cache: Record<string, RBNode<K, V>> = {}
+	operations: Record<
 		string,
 		{ type: "set"; value: RBNode<K, V> } | { type: "delete" }
 	> = {}
 
+	get(key: string): RBNode<K, V> | undefined {
+		const value = this.store.get(key)
+		if (value !== undefined) {
+			this.cache[key] = value
+		}
+		return value
+	}
+
 	set(key: string, value: RBNode<K, V>): void {
 		this.cache[key] = value
-		this.transaction[key] = { type: "set", value }
+		this.operations[key] = { type: "set", value }
 	}
+
 	delete(key: string): void {
 		delete this.cache[key]
-		this.transaction[key] = { type: "delete" }
+		this.operations[key] = { type: "delete" }
+	}
+
+	commit() {
+		for (const [id, operation] of Object.entries(this.operations)) {
+			if (operation.type === "delete") {
+				this.store.delete(id)
+			} else {
+				this.store.set(id, operation.value)
+			}
+		}
 	}
 }
 
@@ -1119,7 +1148,7 @@ function defaultCompare<K>(a: K, b: K) {
 
 //Build a tree
 
-const store = new KeyValueStore<any, any>()
+const store = new InMemoryKeyValueStore<any, any>()
 function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
 	return new RedBlackTree<K, V>({
 		compare: compare || defaultCompare,
