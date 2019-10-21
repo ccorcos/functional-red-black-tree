@@ -26,6 +26,7 @@ class InMemoryKeyValueStore implements KeyValueStore<string, string> {
 		delete this.map[key]
 	}
 }
+
 class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
 	private cache: Record<string, RBNode<K, V>> = {}
 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
@@ -92,6 +93,16 @@ function randomId() {
 let RED = 0 as const
 let BLACK = 1 as const
 
+interface RBNodeData<K, V> {
+	id: string
+	color: 1 | 0
+	key: K
+	value: V
+	left: RBNode<K, V> | undefined
+	right: RBNode<K, V> | undefined
+	count: number
+}
+
 export class RBNode<K, V> {
 	// TODO: make these all readonly
 	// TODO: then sets can use the k/v store.
@@ -104,18 +115,8 @@ export class RBNode<K, V> {
 	public right: RBNode<K, V> | undefined
 	public count: number
 
-	constructor(
-		id: string,
-		args: {
-			color: 1 | 0
-			key: K
-			value: V
-			left: RBNode<K, V> | undefined
-			right: RBNode<K, V> | undefined
-			count: number
-		}
-	) {
-		this.id = id
+	constructor(args: RBNodeData<K, V>, useCloneInstead: false) {
+		this.id = args.id
 		this.color = args.color
 		this.key = args.key
 		this.value = args.value
@@ -124,13 +125,20 @@ export class RBNode<K, V> {
 		this.count = args.count
 	}
 
-	clone(): RBNode<K, V> {
-		return new RBNode(randomId(), this)
+	clone(args?: Partial<RBNodeData<K, V>>): RBNode<K, V> {
+		return new RBNode(
+			{
+				...this,
+				id: randomId(),
+				...args,
+			},
+			false
+		)
 	}
 }
 
 function repaint<K, V>(color: 1 | 0, node: RBNode<K, V>) {
-	return new RBNode(randomId(), { ...node, color })
+	return node.clone({ color })
 }
 
 function recount<K, V>(node: RBNode<K, V>) {
@@ -193,26 +201,28 @@ export class RedBlackTree<K, V> {
 		}
 		//Rebuild path to leaf node
 		n_stack.push(
-			new RBNode(randomId(), {
-				color: RED,
-				key,
-				value,
-				left: undefined,
-				right: undefined,
-				count: 1,
-			})
+			new RBNode(
+				{
+					id: randomId(),
+					color: RED,
+					key,
+					value,
+					left: undefined,
+					right: undefined,
+					count: 1,
+				},
+				false
+			)
 		)
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
 			if (d_stack[s] <= 0) {
-				n_stack[s] = new RBNode(randomId(), {
-					...n,
+				n_stack[s] = n.clone({
 					left: n_stack[s + 1],
 					count: n.count + 1,
 				})
 			} else {
-				n_stack[s] = new RBNode(randomId(), {
-					...n,
+				n_stack[s] = n.clone({
 					right: n_stack[s + 1],
 					count: n.count + 1,
 				})
@@ -676,17 +686,15 @@ export class RedBlackTreeIterator<K, V> {
 		//First copy path to node
 		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = new RBNode(randomId(), n)
+		cstack[cstack.length - 1] = n.clone()
 		for (let i = stack.length - 2; i >= 0; --i) {
 			let n = stack[i]
 			if (n.left === stack[i + 1]) {
-				cstack[i] = new RBNode(randomId(), {
-					...n,
+				cstack[i] = n.clone({
 					left: cstack[i + 1],
 				})
 			} else {
-				cstack[i] = new RBNode(randomId(), {
-					...n,
+				cstack[i] = n.clone({
 					right: cstack[i + 1],
 				})
 			}
@@ -709,15 +717,14 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			//Copy path to leaf
 			let v = cstack[split - 1]
-			cstack.push(new RBNode(randomId(), n))
+			cstack.push(n.clone())
 			cstack[split - 1].key = n.key
 			cstack[split - 1].value = n.value
 
 			//Fix up stack
 			for (let i = cstack.length - 2; i >= split; --i) {
 				n = cstack[i]
-				cstack[i] = new RBNode(randomId(), {
-					...n,
+				cstack[i] = n.clone({
 					right: cstack[i + 1],
 				})
 			}
@@ -883,20 +890,17 @@ export class RedBlackTreeIterator<K, V> {
 		}
 		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = new RBNode(randomId(), {
-			...n,
+		cstack[cstack.length - 1] = n.clone({
 			value,
 		})
 		for (let i = stack.length - 2; i >= 0; --i) {
 			n = stack[i]
 			if (n.left === stack[i + 1]) {
-				cstack[i] = new RBNode(randomId(), {
-					...n,
+				cstack[i] = n.clone({
 					left: cstack[i + 1],
 				})
 			} else {
-				cstack[i] = new RBNode(randomId(), {
-					...n,
+				cstack[i] = n.clone({
 					right: cstack[i + 1],
 				})
 			}
