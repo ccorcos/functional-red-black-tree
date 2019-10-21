@@ -7,7 +7,20 @@ Game Plan:
 - [ ] persist to leveldb.
 	- [ ] generators to run sync or async
 
+- how to we persist to async storage with the same api?
+
+
 */
+
+// class Task<I> {
+// 	constructor(public i: I) {}
+
+// 	static chain<
+// 		A extends keyof OutputMap,
+// 		B,
+// 		OutputMap extends { [type: string]: any }
+// 	>(args: [() => Task<A>, (arg: OutputMap[A]) => B]): B {}
+// }
 
 interface KeyValueStore<K, V> {
 	get(key: K): V | undefined
