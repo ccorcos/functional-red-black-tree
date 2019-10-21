@@ -2,8 +2,10 @@
 
 Game Plan:
 - [x] convert to typescript.
-- [ ] persist to a key-value map.
+- [x] persist to a key-value map.
+	- [ ] write transactionally
 - [ ] persist to leveldb.
+	- [ ] generators to run sync or async
 
 */
 
