@@ -5,14 +5,6 @@ Game Plan:
 - [ ] persist to a key-value map.
 - [ ] persist to leveldb.
 
-
-- better clone operation for RedBlackTree
-- don't call new RBNode
-
-Need to pass as `KeyValueStore<string, RBNode<K, V>>` around everywhere.
-RBNode will dynamically read and write to it.
-Insert will use transactions and commit at the end.
-
 */
 
 interface KeyValueStore<K, V> {
@@ -32,22 +24,6 @@ class InMemoryKeyValueStore implements KeyValueStore<string, string> {
 	}
 	delete(key: string): void {
 		delete this.map[key]
-	}
-}
-
-class RBNodeDataStore<K, V> implements KeyValueStore<string, RBNodeData<K, V>> {
-	constructor(private store: InMemoryKeyValueStore) {}
-	get(key: string): RBNodeData<K, V> | undefined {
-		const result = this.store.get(key)
-		if (result) {
-			return JSON.parse(result)
-		}
-	}
-	set(key: string, value: RBNodeData<K, V>): void {
-		this.store.set(key, JSON.stringify(value))
-	}
-	delete(key: string): void {
-		this.store.delete(key)
 	}
 }
 
@@ -122,8 +98,8 @@ interface RBNodeData<K, V> {
 	color: 1 | 0
 	key: K
 	value: V
-	leftId: string | undefined
-	rightId: string | undefined
+	left: RBNode<K, V> | undefined
+	right: RBNode<K, V> | undefined
 	count: number
 }
 
@@ -131,122 +107,33 @@ export class RBNode<K, V> {
 	// TODO: make these all readonly
 	// TODO: then sets can use the k/v store.
 
-	public readonly id: string
+	public id: string
+	public color: 1 | 0
+	public key: K
+	public value: V
+	public left: RBNode<K, V> | undefined
+	public right: RBNode<K, V> | undefined
+	public count: number
 
-	constructor(
-		public readonly data: RBNodeData<K, V>,
-		private store: KeyValueStore<string, RBNodeData<K, V>>
-	) {
-		this.id = data.id
+	constructor(args: RBNodeData<K, V>, useCloneInstead: false) {
+		this.id = args.id
+		this.color = args.color
+		this.key = args.key
+		this.value = args.value
+		this.left = args.left
+		this.right = args.right
+		this.count = args.count
 	}
 
-	save() {
-		this.store.set(this.data.id, this.data)
-	}
-
-	get color() {
-		return this.data.color
-	}
-
-	set color(x: 0 | 1) {
-		// TODO: only save if it changed.
-		this.data.color = x
-		this.save()
-	}
-
-	get key() {
-		return this.data.key
-	}
-
-	set key(x: K) {
-		this.data.key = x
-		this.save()
-	}
-
-	get value() {
-		return this.data.value
-	}
-
-	set value(x: V) {
-		this.data.value = x
-		this.save()
-	}
-
-	get count() {
-		return this.data.count
-	}
-
-	set count(x: number) {
-		this.data.count = x
-		this.save()
-	}
-
-	get left(): RBNode<K, V> | undefined {
-		if (this.data.leftId) {
-			const args = this.store.get(this.data.leftId)
-			if (args) {
-				return new RBNode(args, this.store)
-			}
-		}
-	}
-
-	set left(x: RBNode<K, V> | undefined) {
-		if (x) {
-			this.data.leftId = x.id
-		} else {
-			this.data.leftId = undefined
-		}
-		this.save()
-	}
-
-	get right(): RBNode<K, V> | undefined {
-		if (this.data.rightId) {
-			const args = this.store.get(this.data.rightId)
-			if (args) {
-				return new RBNode(args, this.store)
-			}
-		}
-	}
-
-	set right(x: RBNode<K, V> | undefined) {
-		if (x) {
-			this.data.rightId = x.id
-		} else {
-			this.data.rightId = undefined
-		}
-		this.save()
-	}
-
-	clone(
-		args?: Partial<RBNodeData<K, V>> &
-			Partial<{ left: RBNode<K, V>; right: RBNode<K, V> }>
-	): RBNode<K, V> {
-		args = args || {}
-		const { left, right, ...rest } = args
-		if ("left" in args) {
-			if (left) {
-				rest.leftId = left.id
-			} else {
-				rest.leftId = undefined
-			}
-		}
-		if ("right" in args) {
-			if (right) {
-				rest.rightId = right.id
-			} else {
-				rest.rightId = undefined
-			}
-		}
-		const newNode = new RBNode(
+	clone(args?: Partial<RBNodeData<K, V>>): RBNode<K, V> {
+		return new RBNode(
 			{
-				...this.data,
+				...this,
 				id: randomId(),
-				...rest,
+				...args,
 			},
-			this.store
+			false
 		)
-		newNode.save()
-		return newNode
 	}
 
 	repaint(color: 1 | 0) {
@@ -263,13 +150,10 @@ export class RedBlackTree<K, V> {
 	public compare: (a: K, b: K) => number
 	public root: RBNode<K, V> | undefined
 
-	constructor(
-		args: {
-			compare: (a: K, b: K) => number
-			root: RBNode<K, V> | undefined
-		},
-		private store: KeyValueStore<string, RBNodeData<K, V>>
-	) {
+	constructor(args: {
+		compare: (a: K, b: K) => number
+		root: RBNode<K, V> | undefined
+	}) {
 		this.compare = args.compare
 		this.root = args.root
 	}
@@ -323,11 +207,11 @@ export class RedBlackTree<K, V> {
 					color: RED,
 					key,
 					value,
-					leftId: undefined,
-					rightId: undefined,
+					left: undefined,
+					right: undefined,
 					count: 1,
 				},
-				this.store
+				false
 			)
 		)
 		for (let s = n_stack.length - 2; s >= 0; --s) {
@@ -479,7 +363,7 @@ export class RedBlackTree<K, V> {
 		}
 		//Return new tree
 		n_stack[0].color = BLACK
-		return new RedBlackTree({ compare: cmp, root: n_stack[0] }, this.store)
+		return new RedBlackTree({ compare: cmp, root: n_stack[0] })
 	}
 
 	forEach<T>(fn: (key: K, value: V) => T, lo?: K, hi?: K): T | undefined {
@@ -508,7 +392,7 @@ export class RedBlackTree<K, V> {
 			stack.push(n)
 			n = n.left
 		}
-		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack: stack })
 	}
 
 	//Last item in list
@@ -519,13 +403,13 @@ export class RedBlackTree<K, V> {
 			stack.push(n)
 			n = n.right
 		}
-		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack: stack })
 	}
 
 	//Find the ith item in the tree
 	at(idx: number): RedBlackTreeIterator<K, V> {
 		if (idx < 0 || !this.root) {
-			return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
+			return new RedBlackTreeIterator({ tree: this, stack: [] })
 		}
 		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
@@ -539,10 +423,7 @@ export class RedBlackTree<K, V> {
 				idx -= n.left.count
 			}
 			if (!idx) {
-				return new RedBlackTreeIterator(
-					{ tree: this, stack: stack },
-					this.store
-				)
+				return new RedBlackTreeIterator({ tree: this, stack: stack })
 			}
 			idx -= 1
 			if (n.right) {
@@ -554,7 +435,7 @@ export class RedBlackTree<K, V> {
 				break
 			}
 		}
-		return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack: [] })
 	}
 
 	ge(key: K): RedBlackTreeIterator<K, V> {
@@ -575,7 +456,7 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		stack.length = last_ptr
-		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack })
 	}
 
 	gt(key: K): RedBlackTreeIterator<K, V> {
@@ -596,7 +477,7 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		stack.length = last_ptr
-		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack })
 	}
 
 	lt(key: K): RedBlackTreeIterator<K, V> {
@@ -617,7 +498,7 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		stack.length = last_ptr
-		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack })
 	}
 
 	le(key: K): RedBlackTreeIterator<K, V> {
@@ -638,7 +519,7 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		stack.length = last_ptr
-		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack })
 	}
 
 	//Finds the item with key if it exists
@@ -650,7 +531,7 @@ export class RedBlackTree<K, V> {
 			let d = cmp(key, n.key)
 			stack.push(n)
 			if (d === 0) {
-				return new RedBlackTreeIterator({ tree: this, stack }, this.store)
+				return new RedBlackTreeIterator({ tree: this, stack })
 			}
 			if (d <= 0) {
 				n = n.left
@@ -658,7 +539,7 @@ export class RedBlackTree<K, V> {
 				n = n.right
 			}
 		}
-		return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
+		return new RedBlackTreeIterator({ tree: this, stack: [] })
 	}
 
 	//Removes item with key from tree
@@ -769,10 +650,7 @@ export class RedBlackTreeIterator<K, V> {
 	public tree: RedBlackTree<K, V>
 	public stack: Array<RBNode<K, V>>
 
-	constructor(
-		args: { tree: RedBlackTree<K, V>; stack: Array<RBNode<K, V>> },
-		private store: KeyValueStore<string, RBNodeData<K, V>>
-	) {
+	constructor(args: { tree: RedBlackTree<K, V>; stack: Array<RBNode<K, V>> }) {
 		this.tree = args.tree
 		this.stack = args.stack
 	}
@@ -793,13 +671,10 @@ export class RedBlackTreeIterator<K, V> {
 
 	//Makes a copy of an iterator
 	clone(): RedBlackTreeIterator<K, V> {
-		return new RedBlackTreeIterator(
-			{
-				tree: this.tree,
-				stack: this.stack.slice(),
-			},
-			this.store
-		)
+		return new RedBlackTreeIterator({
+			tree: this.tree,
+			stack: this.stack.slice(),
+		})
 	}
 
 	//Removes item at iterator from tree
@@ -872,10 +747,7 @@ export class RedBlackTreeIterator<K, V> {
 			for (let i = 0; i < cstack.length; ++i) {
 				cstack[i].count--
 			}
-			return new RedBlackTree(
-				{ compare: this.tree.compare, root: cstack[0] },
-				this.store
-			)
+			return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
 		} else {
 			if (n.left || n.right) {
 				//Second easy case:  Single child black parent
@@ -890,17 +762,11 @@ export class RedBlackTreeIterator<K, V> {
 				for (let i = 0; i < cstack.length - 1; ++i) {
 					cstack[i].count--
 				}
-				return new RedBlackTree(
-					{ compare: this.tree.compare, root: cstack[0] },
-					this.store
-				)
+				return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
 			} else if (cstack.length === 1) {
 				//Third easy case: root
 				//console.log("ROOT")
-				return new RedBlackTree(
-					{ compare: this.tree.compare, root: undefined },
-					this.store
-				)
+				return new RedBlackTree({ compare: this.tree.compare, root: undefined })
 			} else {
 				//Hard case: Repaint n, and then do some nasty stuff
 				//console.log("BLACK leaf no children")
@@ -917,10 +783,7 @@ export class RedBlackTreeIterator<K, V> {
 				}
 			}
 		}
-		return new RedBlackTree(
-			{ compare: this.tree.compare, root: cstack[0] },
-			this.store
-		)
+		return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
 	}
 
 	//Returns key
@@ -1042,10 +905,7 @@ export class RedBlackTreeIterator<K, V> {
 				})
 			}
 		}
-		return new RedBlackTree(
-			{ compare: this.tree.compare, root: cstack[0] },
-			this.store
-		)
+		return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
 	}
 
 	//Moves iterator backward one element
@@ -1293,15 +1153,11 @@ function defaultCompare<K>(a: K, b: K) {
 //Build a tree
 
 const store = new InMemoryKeyValueStore()
-const nodeStore = new RBNodeDataStore<any, any>(store)
 function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
-	return new RedBlackTree<K, V>(
-		{
-			compare: compare || defaultCompare,
-			root: undefined,
-		},
-		nodeStore
-	)
+	return new RedBlackTree<K, V>({
+		compare: compare || defaultCompare,
+		root: undefined,
+	})
 }
 
 export default createRBTree
