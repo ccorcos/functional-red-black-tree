@@ -7,16 +7,52 @@ Game Plan:
 
 */
 
-class KeyValueStore<V> {
+class KeyValueStore<K, V> {
 	map: Record<string, V> = {}
-	get(key: string): V | undefined {
-		return this.map[key]
+	get(key: K): V | undefined {
+		return this.map[JSON.stringify(key)]
 	}
-	set(key: string, value: V): void {
-		this.map[key] = value
+	set(key: K, value: V): void {
+		this.map[JSON.stringify(key)] = value
+	}
+	delete(key: K): void {
+		delete this.map[JSON.stringify(key)]
+	}
+}
+
+class RBNodeCache<K, V> extends KeyValueStore<string, RBNode<K, V>> {
+	cache: Record<string, RBNode<K, V>> = {}
+
+	get(key: string): RBNode<K, V> | undefined {
+		const value = super.get(key)
+		if (value !== undefined) {
+			this.cache[key] = value
+		}
+		return value
+	}
+	set(key: string, value: RBNode<K, V>): void {
+		super.set(key, value)
+		this.cache[key] = value
 	}
 	delete(key: string): void {
-		delete this.map[key]
+		super.delete(key)
+		delete this.cache[key]
+	}
+}
+
+class RBNodeTransaction<K, V> extends RBNodeCache<K, V> {
+	transaction: Record<
+		string,
+		{ type: "set"; value: RBNode<K, V> } | { type: "delete" }
+	> = {}
+
+	set(key: string, value: RBNode<K, V>): void {
+		this.cache[key] = value
+		this.transaction[key] = { type: "set", value }
+	}
+	delete(key: string): void {
+		delete this.cache[key]
+		this.transaction[key] = { type: "delete" }
 	}
 }
 
@@ -31,6 +67,7 @@ export class RBNode<K, V> {
 	// TODO: make these all readonly
 	// TODO: then sets can use the k/v store.
 
+	public id: string
 	public color: 1 | 0
 	public key: K
 	public value: V
@@ -38,14 +75,18 @@ export class RBNode<K, V> {
 	public right: RBNode<K, V> | undefined
 	public count: number
 
-	constructor(args: {
-		color: 1 | 0
-		key: K
-		value: V
-		left: RBNode<K, V> | undefined
-		right: RBNode<K, V> | undefined
-		count: number
-	}) {
+	constructor(
+		id: string,
+		args: {
+			color: 1 | 0
+			key: K
+			value: V
+			left: RBNode<K, V> | undefined
+			right: RBNode<K, V> | undefined
+			count: number
+		}
+	) {
+		this.id = id
 		this.color = args.color
 		this.key = args.key
 		this.value = args.value
@@ -56,11 +97,11 @@ export class RBNode<K, V> {
 }
 
 function cloneNode<K, V>(node: RBNode<K, V>) {
-	return new RBNode(node)
+	return new RBNode(randomId(), node)
 }
 
 function repaint<K, V>(color: 1 | 0, node: RBNode<K, V>) {
-	return new RBNode({ ...node, color })
+	return new RBNode(randomId(), { ...node, color })
 }
 
 function recount<K, V>(node: RBNode<K, V>) {
@@ -123,7 +164,7 @@ export class RedBlackTree<K, V> {
 		}
 		//Rebuild path to leaf node
 		n_stack.push(
-			new RBNode({
+			new RBNode(randomId(), {
 				color: RED,
 				key,
 				value,
@@ -135,13 +176,13 @@ export class RedBlackTree<K, V> {
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
 			if (d_stack[s] <= 0) {
-				n_stack[s] = new RBNode({
+				n_stack[s] = new RBNode(randomId(), {
 					...n,
 					left: n_stack[s + 1],
 					count: n.count + 1,
 				})
 			} else {
-				n_stack[s] = new RBNode({
+				n_stack[s] = new RBNode(randomId(), {
 					...n,
 					right: n_stack[s + 1],
 					count: n.count + 1,
@@ -606,16 +647,16 @@ export class RedBlackTreeIterator<K, V> {
 		//First copy path to node
 		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = new RBNode(n)
+		cstack[cstack.length - 1] = new RBNode(randomId(), n)
 		for (let i = stack.length - 2; i >= 0; --i) {
 			let n = stack[i]
 			if (n.left === stack[i + 1]) {
-				cstack[i] = new RBNode({
+				cstack[i] = new RBNode(randomId(), {
 					...n,
 					left: cstack[i + 1],
 				})
 			} else {
-				cstack[i] = new RBNode({
+				cstack[i] = new RBNode(randomId(), {
 					...n,
 					right: cstack[i + 1],
 				})
@@ -639,14 +680,14 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			//Copy path to leaf
 			let v = cstack[split - 1]
-			cstack.push(new RBNode(n))
+			cstack.push(new RBNode(randomId(), n))
 			cstack[split - 1].key = n.key
 			cstack[split - 1].value = n.value
 
 			//Fix up stack
 			for (let i = cstack.length - 2; i >= split; --i) {
 				n = cstack[i]
-				cstack[i] = new RBNode({
+				cstack[i] = new RBNode(randomId(), {
 					...n,
 					right: cstack[i + 1],
 				})
@@ -813,19 +854,19 @@ export class RedBlackTreeIterator<K, V> {
 		}
 		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = new RBNode({
+		cstack[cstack.length - 1] = new RBNode(randomId(), {
 			...n,
 			value,
 		})
 		for (let i = stack.length - 2; i >= 0; --i) {
 			n = stack[i]
 			if (n.left === stack[i + 1]) {
-				cstack[i] = new RBNode({
+				cstack[i] = new RBNode(randomId(), {
 					...n,
 					left: cstack[i + 1],
 				})
 			} else {
-				cstack[i] = new RBNode({
+				cstack[i] = new RBNode(randomId(), {
 					...n,
 					right: cstack[i + 1],
 				})
@@ -1077,6 +1118,8 @@ function defaultCompare<K>(a: K, b: K) {
 }
 
 //Build a tree
+
+const store = new KeyValueStore<any, any>()
 function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
 	return new RedBlackTree<K, V>({
 		compare: compare || defaultCompare,
