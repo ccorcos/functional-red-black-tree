@@ -27,64 +27,80 @@ class InMemoryKeyValueStore implements KeyValueStore<string, string> {
 	}
 }
 
-class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
-	private cache: Record<string, RBNode<K, V>> = {}
-	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
-
-	get(key: string): RBNode<K, V> | undefined {
-		const value = this.store.get(key)
-		if (value !== undefined) {
-			this.cache[key] = value
+class RBNodeDataStore<K, V> implements KeyValueStore<string, RBNodeData<K, V>> {
+	constructor(private store: InMemoryKeyValueStore) {}
+	get(key: string): RBNodeData<K, V> | undefined {
+		const result = this.store.get(key)
+		if (result) {
+			return JSON.parse(result)
 		}
-		return value
 	}
-	set(key: string, value: RBNode<K, V>): void {
-		this.store.set(key, value)
-		this.cache[key] = value
+	set(key: string, value: RBNodeData<K, V>): void {
+		this.store.set(key, JSON.stringify(value))
 	}
 	delete(key: string): void {
 		this.store.delete(key)
-		delete this.cache[key]
 	}
 }
 
-class RBNodeTransaction<K, V> implements KeyValueStore<string, RBNode<K, V>> {
-	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
+// class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
+// 	private cache: Record<string, RBNode<K, V>> = {}
+// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
 
-	cache: Record<string, RBNode<K, V>> = {}
-	operations: Record<
-		string,
-		{ type: "set"; value: RBNode<K, V> } | { type: "delete" }
-	> = {}
+// 	get(key: string): RBNode<K, V> | undefined {
+// 		const value = this.store.get(key)
+// 		if (value !== undefined) {
+// 			this.cache[key] = value
+// 		}
+// 		return value
+// 	}
+// 	set(key: string, value: RBNode<K, V>): void {
+// 		this.store.set(key, value)
+// 		this.cache[key] = value
+// 	}
+// 	delete(key: string): void {
+// 		this.store.delete(key)
+// 		delete this.cache[key]
+// 	}
+// }
 
-	get(key: string): RBNode<K, V> | undefined {
-		const value = this.store.get(key)
-		if (value !== undefined) {
-			this.cache[key] = value
-		}
-		return value
-	}
+// class RBNodeTransaction<K, V> implements KeyValueStore<string, RBNode<K, V>> {
+// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
 
-	set(key: string, value: RBNode<K, V>): void {
-		this.cache[key] = value
-		this.operations[key] = { type: "set", value }
-	}
+// 	cache: Record<string, RBNode<K, V>> = {}
+// 	operations: Record<
+// 		string,
+// 		{ type: "set"; value: RBNode<K, V> } | { type: "delete" }
+// 	> = {}
 
-	delete(key: string): void {
-		delete this.cache[key]
-		this.operations[key] = { type: "delete" }
-	}
+// 	get(key: string): RBNode<K, V> | undefined {
+// 		const value = this.store.get(key)
+// 		if (value !== undefined) {
+// 			this.cache[key] = value
+// 		}
+// 		return value
+// 	}
 
-	commit() {
-		for (const [id, operation] of Object.entries(this.operations)) {
-			if (operation.type === "delete") {
-				this.store.delete(id)
-			} else {
-				this.store.set(id, operation.value)
-			}
-		}
-	}
-}
+// 	set(key: string, value: RBNode<K, V>): void {
+// 		this.cache[key] = value
+// 		this.operations[key] = { type: "set", value }
+// 	}
+
+// 	delete(key: string): void {
+// 		delete this.cache[key]
+// 		this.operations[key] = { type: "delete" }
+// 	}
+
+// 	commit() {
+// 		for (const [id, operation] of Object.entries(this.operations)) {
+// 			if (operation.type === "delete") {
+// 				this.store.delete(id)
+// 			} else {
+// 				this.store.set(id, operation.value)
+// 			}
+// 		}
+// 	}
+// }
 
 function randomId() {
 	return Math.round(Math.random() * 1e10).toString()
@@ -156,6 +172,10 @@ export class RedBlackTree<K, V> {
 	}) {
 		this.compare = args.compare
 		this.root = args.root
+	}
+
+	clone(root: RBNode<K, V> | undefined) {
+		return new RedBlackTree({ ...this, root })
 	}
 
 	get keys() {
@@ -747,7 +767,7 @@ export class RedBlackTreeIterator<K, V> {
 			for (let i = 0; i < cstack.length; ++i) {
 				cstack[i].count--
 			}
-			return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
+			return this.tree.clone(cstack[0])
 		} else {
 			if (n.left || n.right) {
 				//Second easy case:  Single child black parent
@@ -762,11 +782,11 @@ export class RedBlackTreeIterator<K, V> {
 				for (let i = 0; i < cstack.length - 1; ++i) {
 					cstack[i].count--
 				}
-				return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
+				return this.tree.clone(cstack[0])
 			} else if (cstack.length === 1) {
 				//Third easy case: root
 				//console.log("ROOT")
-				return new RedBlackTree({ compare: this.tree.compare, root: undefined })
+				return this.tree.clone(undefined)
 			} else {
 				//Hard case: Repaint n, and then do some nasty stuff
 				//console.log("BLACK leaf no children")
@@ -783,7 +803,7 @@ export class RedBlackTreeIterator<K, V> {
 				}
 			}
 		}
-		return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
+		return this.tree.clone(cstack[0])
 	}
 
 	//Returns key
@@ -905,7 +925,7 @@ export class RedBlackTreeIterator<K, V> {
 				})
 			}
 		}
-		return new RedBlackTree({ compare: this.tree.compare, root: cstack[0] })
+		return this.tree.clone(cstack[0])
 	}
 
 	//Moves iterator backward one element
@@ -1153,6 +1173,7 @@ function defaultCompare<K>(a: K, b: K) {
 //Build a tree
 
 const store = new InMemoryKeyValueStore()
+const nodeStore = new RBNodeDataStore<any, any>(store)
 function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
 	return new RedBlackTree<K, V>({
 		compare: compare || defaultCompare,
