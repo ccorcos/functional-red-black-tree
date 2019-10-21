@@ -13,19 +13,19 @@ interface KeyValueStore<K, V> {
 	delete(key: K): void
 }
 
-class InMemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
-	private map: Record<string, V> = {}
-	get(key: K): V | undefined {
-		return this.map[JSON.stringify(key)]
+// Going to serialize to simulate a real backend.
+class InMemoryKeyValueStore implements KeyValueStore<string, string> {
+	private map: Record<string, string> = {}
+	get(key: string): string | undefined {
+		return this.map[key]
 	}
-	set(key: K, value: V): void {
-		this.map[JSON.stringify(key)] = value
+	set(key: string, value: string): void {
+		this.map[key] = value
 	}
-	delete(key: K): void {
-		delete this.map[JSON.stringify(key)]
+	delete(key: string): void {
+		delete this.map[key]
 	}
 }
-
 class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
 	private cache: Record<string, RBNode<K, V>> = {}
 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
@@ -1148,7 +1148,7 @@ function defaultCompare<K>(a: K, b: K) {
 
 //Build a tree
 
-const store = new InMemoryKeyValueStore<any, any>()
+const store = new InMemoryKeyValueStore()
 function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
 	return new RedBlackTree<K, V>({
 		compare: compare || defaultCompare,
