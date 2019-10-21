@@ -135,10 +135,10 @@ export class RBNode<K, V> {
 			false
 		)
 	}
-}
 
-function repaint<K, V>(color: 1 | 0, node: RBNode<K, V>) {
-	return node.clone({ color })
+	repaint(color: 1 | 0) {
+		return this.clone({ color })
+	}
 }
 
 function recount<K, V>(node: RBNode<K, V>) {
@@ -243,7 +243,7 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("LLr")
 						p.color = BLACK
-						pp.right = repaint(BLACK, y)
+						pp.right = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
@@ -271,7 +271,7 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("LRr")
 						p.color = BLACK
-						pp.right = repaint(BLACK, y)
+						pp.right = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
@@ -304,7 +304,7 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("RRr", y.key)
 						p.color = BLACK
-						pp.left = repaint(BLACK, y)
+						pp.left = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
@@ -332,7 +332,7 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("RLr")
 						p.color = BLACK
-						pp.left = repaint(BLACK, y)
+						pp.left = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
@@ -1010,11 +1010,11 @@ function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent", p.right.value)
 					p.color = BLACK
-					p.right = repaint(RED, s)
+					p.right = s.repaint(RED)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent", p.right.value)
-					p.right = repaint(RED, s)
+					p.right = s.repaint(RED)
 					continue
 				}
 			} else {
@@ -1102,11 +1102,11 @@ function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent")
 					p.color = BLACK
-					p.left = repaint(RED, s)
+					p.left = s.repaint(RED)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent")
-					p.left = repaint(RED, s)
+					p.left = s.repaint(RED)
 					continue
 				}
 			} else {
