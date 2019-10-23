@@ -7,61 +7,47 @@
 */
 
 class IO<I, O, N> {
-	constructor(public input: I, public mapper: (o: O) => N) {}
-
-	map<T>(fn: (i: N) => T) {
-		const { input, mapper } = this
-		return new IO<I, O, T>(input, o => fn(mapper(o)))
-	}
+	constructor(public input: I, public then: (o: O) => N) {}
 
 	// This is helpful for type-level programming.
 	public last: N extends IO<any, any, any> ? N["last"] : N
 }
 
-interface DbGet {
-	type: "get"
-	id: string
+class DbGet<N> extends IO<{ type: "get"; id: string }, number, N> {
+	constructor(id: string, then: (n: number) => N) {
+		super({ type: "get", id }, then)
+	}
 }
 
-interface DbSet {
-	type: "set"
-	id: string
-	value: string
+class DbSet<N> extends IO<{ type: "set"; id: string; value: number }, void, N> {
+	constructor(id: string, value: number, then: () => N) {
+		super({ type: "set", id, value }, then)
+	}
 }
 
-const db = {
-	get(id: string) {
-		return new IO<DbGet, string, string>({ type: "get", id }, identity)
-	},
-	set(id: string, value: string) {
-		return new IO<DbSet, void, void>({ type: "set", id, value }, identity)
-	},
-}
+type Language<O = any> = DbGet<O> | DbSet<O>
 
-const x2 = db.get("asdf")
-const x3 = x2.map(record => db.set("asdf2", record))
+// function chain<A extends Language, B extends Language>(
+// 	args: [A, (arg: A["last"]) => B]
+// ): B["last"] {
+// 	return {} as any
+// }
 
-type Language<N = any> = IO<DbGet, string, N> | IO<DbSet, string, N>
-
-const x = db.get("123").map(value => {
-	return db.set("234", value).map(() => {
+const x = new DbGet("123", n => {
+	return new DbSet("123", n + 1, () => {
 		return true
 	})
 })
 
 function evaluateDb<L extends Language>(language: L): L["last"] {
 	while (true) {
-		if (language.input.type === "get") {
-			language = language.mapper("asdf")
-		} else if (language.input.type === "set") {
-			language = language.mapper()
+		if (language instanceof DbGet) {
+			language = language.then(1)
+		} else if (language instanceof DbSet) {
+			language = language.then()
 		} else {
 			return language
 		}
 	}
 }
 const y2 = evaluateDb(x)
-
-function identity<X>(x: X): X {
-	return x
-}
