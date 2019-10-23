@@ -7,7 +7,12 @@
 */
 
 class IO<I, O, N> {
-	constructor(public input: I, public then: (o: O) => N) {}
+	constructor(public input: I, public mapper: (o: O) => N) {}
+
+	public map<T>(fn: (n: N) => T) {
+		const { input, mapper } = this
+		return new IO<I, O, T>(input, i => fn(mapper(i)))
+	}
 
 	// This is helpful for type-level programming.
 	public last: N extends IO<any, any, any> ? N["last"] : N
@@ -42,12 +47,16 @@ const x = new DbGet("123", n => {
 function evaluateDb<L extends Language>(language: L): L["last"] {
 	while (true) {
 		if (language instanceof DbGet) {
-			language = language.then(1)
+			language = language.mapper(1)
 		} else if (language instanceof DbSet) {
-			language = language.then()
+			language = language.mapper()
 		} else {
 			return language
 		}
 	}
 }
 const y2 = evaluateDb(x)
+
+function identity<X>(x: X): X {
+	return x
+}
