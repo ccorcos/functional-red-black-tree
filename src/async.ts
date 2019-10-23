@@ -6,6 +6,24 @@
 
 */
 
+type DbGet2<T> = { type: "get"; id: string; next: (value: string) => T }
+type DbSet2<T> = { type: "set"; id: string; value: string; next: () => T }
+type DbAll2<O extends Array<Lang2<any>>, T> = {
+	type: "all"
+	args: O
+	next: (args: Array<ReturnType<O[number]["next"]>>) => T
+}
+type Lang2<O> = DbGet2<O> | DbSet2<O> | DbAll2<Array<Lang2<any>>, O>
+
+function get(id: string): DbGet2<void> {
+	return { type: "get", id, next: () => {} }
+}
+
+// a map function isnt going to work without higher-kinded types.
+// However, this does kind of work...
+// Maybe try using interfaces and put the map functions on there. Similar
+// to how a class would work, but just plain objects. Any different?
+
 class IO<I, O, N> {
 	constructor(public input: I, public mapper: (o: O) => N) {}
 
