@@ -18,36 +18,44 @@ class IO<I, O, N> {
 	public last: N extends IO<any, any, any> ? N["last"] : N
 }
 
-class DbGet<N> extends IO<{ type: "get"; id: string }, number, N> {
-	constructor(id: string, then: (n: number) => N) {
-		super({ type: "get", id }, then)
+class DbGet<N = string> extends IO<{ type: "get"; id: string }, string, N> {
+	constructor(id: string) {
+		super({ type: "get", id }, identity as any)
+	}
+	public map<T>(fn: (n: N) => T) {
+		const { input, mapper } = this
+		const next = new DbGet<T>(input.id)
+		next.mapper = i => fn(mapper(i))
+		return next
 	}
 }
 
-class DbSet<N> extends IO<{ type: "set"; id: string; value: number }, void, N> {
-	constructor(id: string, value: number, then: () => N) {
-		super({ type: "set", id, value }, then)
+class DbSet<N = void> extends IO<
+	{ type: "set"; id: string; value: string },
+	void,
+	N
+> {
+	constructor(id: string, value: string) {
+		super({ type: "set", id, value }, identity as any)
+	}
+
+	public map<T>(fn: (n: N) => T) {
+		const { input, mapper } = this
+		const next = new DbSet<T>(input.id, input.value)
+		next.mapper = i => fn(mapper(i))
+		return next
 	}
 }
-
 type Language<O = any> = DbGet<O> | DbSet<O>
 
-// function chain<A extends Language, B extends Language>(
-// 	args: [A, (arg: A["last"]) => B]
-// ): B["last"] {
-// 	return {} as any
-// }
-
-const x = new DbGet("123", n => {
-	return new DbSet("123", n + 1, () => {
-		return true
-	})
+const x = new DbGet("123").map(value => {
+	return new DbSet("234", value).map(() => true)
 })
 
 function evaluateDb<L extends Language>(language: L): L["last"] {
 	while (true) {
 		if (language instanceof DbGet) {
-			language = language.mapper(1)
+			language = language.mapper("result")
 		} else if (language instanceof DbSet) {
 			language = language.mapper()
 		} else {
