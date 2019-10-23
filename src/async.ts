@@ -16,6 +16,56 @@ class IO<I, O, N> {
 
 	// This is helpful for type-level programming.
 	public last: N extends IO<any, any, any> ? N["last"] : N
+
+	// All generic.
+	static all<A extends IO<any, any, any>, B extends IO<any, any, any>>(
+		args: [A, B]
+	): IOAll<[A, B], [A["last"], B["last"]]>
+	static all<
+		A extends IO<any, any, any>,
+		B extends IO<any, any, any>,
+		C extends IO<any, any, any>
+	>(args: [A, B, C]): IOAll<[A, B, C], [A["last"], B["last"], C["last"]]>
+	static all<
+		A extends IO<any, any, any>,
+		B extends IO<any, any, any>,
+		C extends IO<any, any, any>,
+		D extends IO<any, any, any>
+	>(
+		args: [A, B, C, D]
+	): IOAll<[A, B, C, D], [A["last"], B["last"], C["last"], D["last"]]>
+	static all<
+		A extends IO<any, any, any>,
+		B extends IO<any, any, any>,
+		C extends IO<any, any, any>,
+		D extends IO<any, any, any>,
+		E extends IO<any, any, any>
+	>(
+		args: [A, B, C, D, E]
+	): IOAll<
+		[A, B, C, D, E],
+		[A["last"], B["last"], C["last"], D["last"], E["last"]]
+	>
+	static all<T extends Array<IO<any, any, any>>>(
+		args: T
+	): IOAll<T, Array<T[number]["last"]>> {
+		return new IOAll(args, identity as any)
+	}
+}
+
+class IOAll<I extends Array<IO<any, any, any>>, N> extends IO<
+	I,
+	I[number]["last"],
+	N
+> {
+	constructor(public input: I, public mapper: (o: I) => N) {
+		super(input, mapper)
+	}
+
+	public map<T>(fn: (n: N) => T) {
+		const { input, mapper } = this
+		return new IOAll(input, i => fn(mapper(i)))
+	}
 }
 
 class DbGet<N = string> extends IO<{ type: "get"; id: string }, string, N> {
@@ -46,24 +96,35 @@ class DbSet<N = void> extends IO<
 		return next
 	}
 }
-type Language<O = any> = DbGet<O> | DbSet<O>
+
+// TODO: ideally this would work: `IOAll<Array<Language<any>>, O>`.
+type Language<O = any> = DbGet<O> | DbSet<O> | IOAll<any, O>
 
 const x = new DbGet("123").map(value => {
 	return new DbSet("234", value).map(() => true)
 })
 
+const a = IO.all([
+	new DbGet("123"),
+	new DbSet("234", "something").map(() => true),
+]).map(() => "dope" as const)
+
 function evaluateDb<L extends Language>(language: L): L["last"] {
+	let result: any = language
 	while (true) {
-		if (language instanceof DbGet) {
-			language = language.mapper("result")
-		} else if (language instanceof DbSet) {
-			language = language.mapper()
+		if (result instanceof DbGet) {
+			result = result.mapper("result")
+		} else if (result instanceof DbSet) {
+			result = result.mapper()
+		} else if (result instanceof IOAll) {
+			result = result.mapper([])
 		} else {
-			return language
+			return result
 		}
 	}
 }
 const y2 = evaluateDb(x)
+const y3 = evaluateDb(a)
 
 function identity<X>(x: X): X {
 	return x
