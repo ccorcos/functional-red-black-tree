@@ -199,35 +199,36 @@ export class RBNode<K, V> {
 		return this.args.color
 	}
 
-	setColor(x: 0 | 1) {
-		// TODO: only save if it changed.
-		this.args.color = x
-		this.save()
-	}
-
 	get key() {
 		return this.args.key
-	}
-
-	set key(x: K) {
-		this.args.key = x
-		this.save()
 	}
 
 	get value() {
 		return this.args.value
 	}
 
-	set value(x: V) {
-		this.args.value = x
-		this.save()
-	}
-
 	get count() {
 		return this.args.count
 	}
 
-	set count(x: number) {
+	// TODO: make these all immutable!
+	setColor(x: 0 | 1) {
+		// TODO: only save if it changed.
+		this.args.color = x
+		this.save()
+	}
+
+	setKey(x: K) {
+		this.args.key = x
+		this.save()
+	}
+
+	setValue(x: V) {
+		this.args.value = x
+		this.save()
+	}
+
+	setCount(x: number) {
 		this.args.count = x
 		this.save()
 	}
@@ -295,8 +296,9 @@ export class RBNode<K, V> {
 }
 
 function recount<K, V>(node: RBNode<K, V>) {
-	node.count =
+	node.setCount(
 		1 + (node.left ? node.left.count : 0) + (node.right ? node.right.count : 0)
+	)
 }
 
 export class RedBlackTree<K, V> {
@@ -899,8 +901,8 @@ export class RedBlackTreeIterator<K, V> {
 			//Copy path to leaf
 			let v = cstack[split - 1]
 			cstack.push(n.clone())
-			cstack[split - 1].key = n.key
-			cstack[split - 1].value = n.value
+			cstack[split - 1].setKey(n.key)
+			cstack[split - 1].setValue(n.value)
 
 			//Fix up stack
 			for (let i = cstack.length - 2; i >= split; --i) {
@@ -926,7 +928,7 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			cstack.pop()
 			for (let i = 0; i < cstack.length; ++i) {
-				cstack[i].count--
+				cstack[i].setCount(cstack[i].count - 1)
 			}
 			return this.tree.clone(cstack[0].id)
 		} else {
@@ -941,7 +943,7 @@ export class RedBlackTreeIterator<K, V> {
 				//Child must be red, so repaint it black to balance color
 				n.setColor(BLACK)
 				for (let i = 0; i < cstack.length - 1; ++i) {
-					cstack[i].count--
+					cstack[i].setCount(cstack[i].count - 1)
 				}
 				return this.tree.clone(cstack[0].id)
 			} else if (cstack.length === 1) {
@@ -952,7 +954,7 @@ export class RedBlackTreeIterator<K, V> {
 				//Hard case: Repaint n, and then do some nasty stuff
 				//console.log("BLACK leaf no children")
 				for (let i = 0; i < cstack.length; ++i) {
-					cstack[i].count--
+					cstack[i].setCount(cstack[i].count - 1)
 				}
 				let parent = cstack[cstack.length - 2]
 				fixDoubleBlack(cstack)
@@ -1114,12 +1116,12 @@ export class RedBlackTreeIterator<K, V> {
 
 //Swaps two nodes
 function swapNode<K, V>(n: RBNode<K, V>, v: RBNode<K, V>) {
-	n.key = v.key
-	n.value = v.value
+	n.setKey(v.key)
+	n.setValue(v.value)
 	n.left = v.left
 	n.right = v.right
 	n.setColor(v.color)
-	n.count = v.count
+	n.setCount(v.count)
 }
 
 //Fix up a double black node in a tree
