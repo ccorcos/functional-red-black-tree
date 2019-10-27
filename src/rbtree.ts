@@ -15,6 +15,116 @@ Game Plan:
 
 - how to we persist to async storage with the same api?
 
+*/
+
+/*
+
+
+interface KeyValueStore<K, V> {
+	get(key: K): Promise<V | undefined>
+	set(key: K, value: V): Promise<void>
+	delete(key: K): Promise<void>
+}
+
+// Going to serialize to simulate a real backend.
+class InMemoryKeyValueStore implements KeyValueStore<string, string> {
+	private map: Record<string, string> = {}
+	async get(key: string): Promise<string | undefined> {
+		return this.map[key]
+	}
+	async set(key: string, value: string): Promise<void> {
+		this.map[key] = value
+	}
+	async delete(key: string): Promise<void> {
+		delete this.map[key]
+	}
+}
+
+class RBNodeDataStore<K, V> {
+	constructor(private store: InMemoryKeyValueStore) {}
+	async get(key: string): Promise<RBNodeData<K, V> | undefined> {
+		const result = await this.store.get(key)
+		if (result) {
+			return JSON.parse(result)
+		}
+	}
+	async batch(operations: Array<Operation<K, V>>) {
+		for (const op of operations) {
+			if (op.type === "set") {
+				const node = op.value
+				await this.store.set(node.id, JSON.stringify(node))
+			} else {
+				await this.store.delete(op.id)
+			}
+		}
+	}
+}
+
+// class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
+// 	private cache: Record<string, RBNode<K, V>> = {}
+// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
+
+// 	get(key: string): RBNode<K, V> | undefined {
+// 		const value = this.store.get(key)
+// 		if (value !== undefined) {
+// 			this.cache[key] = value
+// 		}
+// 		return value
+// 	}
+// 	set(key: string, value: RBNode<K, V>): void {
+// 		this.store.set(key, value)
+// 		this.cache[key] = value
+// 	}
+// 	delete(key: string): void {
+// 		this.store.delete(key)
+// 		delete this.cache[key]
+// 	}
+// }
+
+type Operation<K, V> =
+	| { type: "delete"; id: string }
+	| {
+			type: "set"
+			id: string
+			value: RBNodeData<K, V>
+	  }
+
+class RBNodeTransaction<K, V> {
+	constructor(private store: RBNodeDataStore<K, V>) {}
+
+	cache: Record<string, RBNodeData<K, V> | undefined> = {}
+
+	changes: Record<string, Operation<K, V>> = {}
+
+	async get(nodeId: string): Promise<RBNode<K, V> | undefined> {
+		if (nodeId in this.cache) {
+			const data = this.cache[nodeId]
+			if (data !== undefined) {
+				return new RBNode(data, this)
+			}
+		}
+		const data = await this.store.get(nodeId)
+		this.cache[nodeId] = data
+		if (data !== undefined) {
+			return new RBNode(data, this)
+		}
+	}
+
+	set(value: RBNodeData<K, V>): void {
+		this.cache[value.id] = value
+		this.changes[value.id] = { type: "set", id: value.id, value }
+	}
+
+	delete(nodeId: string): void {
+		this.cache[nodeId] = undefined
+		this.changes[nodeId] = { type: "delete", id: nodeId }
+	}
+
+	async commit() {
+		const ops = Object.values(this.changes)
+		await this.store.batch(ops)
+	}
+}
 
 */
 
