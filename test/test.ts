@@ -22,15 +22,16 @@ function printTree<K, V>(tree: RBNode<K, V> | undefined): any {
 }
 
 function print<K, V>(t: RedBlackTree<K, V>) {
-	console.log(util.inspect(printTree(t.root), { depth: 12 }))
+	console.log(util.inspect(printTree(t.getRoot()), { depth: 12 }))
 }
 
 //Ensures the red black axioms are satisfied by tree
 function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
-	if (!tree.root) {
+	const root = tree.getRoot()
+	if (!root) {
 		return
 	}
-	t.equals(tree.root.color, 1, "root is black")
+	t.equals(root.color, 1, "root is black")
 	function checkNode(node: RBNode<K, V> | undefined): [number, number] {
 		if (!node) {
 			return [1, 0]
@@ -69,7 +70,7 @@ function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
 		t.equals(cl[1] + cr[1] + 1, node.count, "item count consistency")
 		return [cl[0] + node.color, cl[1] + cr[1] + 1]
 	}
-	var r = checkNode(tree.root)
+	var r = checkNode(tree.getRoot())
 	t.equals(r[1], tree.length, "tree length")
 }
 
