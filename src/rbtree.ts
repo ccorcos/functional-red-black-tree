@@ -7,14 +7,8 @@ Game Plan:
 - [ ] persist to leveldb.
 	- [ ] generators to run sync or async
 
-
-- [ ] finish migrating everything to async using transactions
-
-
-
-
 - how to we persist to async storage with the same api?
-	Lets just do async... Maybe React suspense will become our best friend.
+
 
 */
 
@@ -29,42 +23,38 @@ Game Plan:
 // }
 
 interface KeyValueStore<K, V> {
-	get(key: K): Promise<V | undefined>
-	set(key: K, value: V): Promise<void>
-	delete(key: K): Promise<void>
+	get(key: K): V | undefined
+	set(key: K, value: V): void
+	delete(key: K): void
 }
 
 // Going to serialize to simulate a real backend.
 class InMemoryKeyValueStore implements KeyValueStore<string, string> {
 	private map: Record<string, string> = {}
-	async get(key: string): Promise<string | undefined> {
+	get(key: string): string | undefined {
 		return this.map[key]
 	}
-	async set(key: string, value: string): Promise<void> {
+	set(key: string, value: string): void {
 		this.map[key] = value
 	}
-	async delete(key: string): Promise<void> {
+	delete(key: string): void {
 		delete this.map[key]
 	}
 }
 
-class RBNodeDataStore<K, V> {
+class RBNodeDataStore<K, V> implements KeyValueStore<string, RBNodeData<K, V>> {
 	constructor(private store: InMemoryKeyValueStore) {}
-	async get(key: string): Promise<RBNodeData<K, V> | undefined> {
-		const result = await this.store.get(key)
+	get(key: string): RBNodeData<K, V> | undefined {
+		const result = this.store.get(key)
 		if (result) {
 			return JSON.parse(result)
 		}
 	}
-	async batch(operations: Array<Operation<K, V>>) {
-		for (const op of operations) {
-			if (op.type === "set") {
-				const node = op.value
-				await this.store.set(node.id, JSON.stringify(node))
-			} else {
-				await this.store.delete(op.id)
-			}
-		}
+	set(key: string, value: RBNodeData<K, V>): void {
+		this.store.set(key, JSON.stringify(value))
+	}
+	delete(key: string): void {
+		this.store.delete(key)
 	}
 }
 
@@ -89,50 +79,43 @@ class RBNodeDataStore<K, V> {
 // 	}
 // }
 
-type Operation<K, V> =
-	| { type: "delete"; id: string }
-	| {
-			type: "set"
-			id: string
-			value: RBNodeData<K, V>
-	  }
+// class RBNodeTransaction<K, V> implements KeyValueStore<string, RBNode<K, V>> {
+// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
 
-class RBNodeTransaction<K, V> {
-	constructor(private store: RBNodeDataStore<K, V>) {}
+// 	cache: Record<string, RBNode<K, V>> = {}
+// 	operations: Record<
+// 		string,
+// 		{ type: "set"; value: RBNode<K, V> } | { type: "delete" }
+// 	> = {}
 
-	cache: Record<string, RBNodeData<K, V> | undefined> = {}
+// 	get(key: string): RBNode<K, V> | undefined {
+// 		const value = this.store.get(key)
+// 		if (value !== undefined) {
+// 			this.cache[key] = value
+// 		}
+// 		return value
+// 	}
 
-	changes: Record<string, Operation<K, V>> = {}
+// 	set(key: string, value: RBNode<K, V>): void {
+// 		this.cache[key] = value
+// 		this.operations[key] = { type: "set", value }
+// 	}
 
-	async get(nodeId: string): Promise<RBNode<K, V> | undefined> {
-		if (nodeId in this.cache) {
-			const data = this.cache[nodeId]
-			if (data !== undefined) {
-				return new RBNode(data, this)
-			}
-		}
-		const data = await this.store.get(nodeId)
-		this.cache[nodeId] = data
-		if (data !== undefined) {
-			return new RBNode(data, this)
-		}
-	}
+// 	delete(key: string): void {
+// 		delete this.cache[key]
+// 		this.operations[key] = { type: "delete" }
+// 	}
 
-	set(value: RBNodeData<K, V>): void {
-		this.cache[value.id] = value
-		this.changes[value.id] = { type: "set", id: value.id, value }
-	}
-
-	delete(nodeId: string): void {
-		this.cache[nodeId] = undefined
-		this.changes[nodeId] = { type: "delete", id: nodeId }
-	}
-
-	async commit() {
-		const ops = Object.values(this.changes)
-		await this.store.batch(ops)
-	}
-}
+// 	commit() {
+// 		for (const [id, operation] of Object.entries(this.operations)) {
+// 			if (operation.type === "delete") {
+// 				this.store.delete(id)
+// 			} else {
+// 				this.store.set(id, operation.value)
+// 			}
+// 		}
+// 	}
+// }
 
 function randomId() {
 	return Math.round(Math.random() * 1e10).toString()
@@ -142,7 +125,6 @@ let RED = 0 as const
 let BLACK = 1 as const
 
 interface RBNodeData<K, V> {
-	type: "data" // use this to distinguish type from RBNode
 	id: string
 	color: 1 | 0
 	key: K
@@ -152,19 +134,18 @@ interface RBNodeData<K, V> {
 	count: number
 }
 
-// TODO remove this class in favor of helper functions?
 export class RBNode<K, V> {
 	public readonly id: string
 
 	constructor(
 		private args: RBNodeData<K, V>,
-		private txn: RBNodeTransaction<K, V>
+		private store: KeyValueStore<string, RBNodeData<K, V>>
 	) {
 		this.id = args.id
 	}
 
 	save() {
-		this.txn.set(this.args)
+		this.store.set(this.args.id, this.args)
 	}
 
 	get color() {
@@ -172,10 +153,7 @@ export class RBNode<K, V> {
 	}
 
 	set color(x: 0 | 1) {
-		if (this.args.color === x) {
-			return
-		}
-		// TODO: don't mutate
+		// TODO: only save if it changed.
 		this.args.color = x
 		this.save()
 	}
@@ -185,9 +163,6 @@ export class RBNode<K, V> {
 	}
 
 	set key(x: K) {
-		if (this.args.key === x) {
-			return
-		}
 		this.args.key = x
 		this.save()
 	}
@@ -197,9 +172,6 @@ export class RBNode<K, V> {
 	}
 
 	set value(x: V) {
-		if (this.args.value === x) {
-			return
-		}
 		this.args.value = x
 		this.save()
 	}
@@ -209,9 +181,6 @@ export class RBNode<K, V> {
 	}
 
 	set count(x: number) {
-		if (this.args.count === x) {
-			return
-		}
 		this.args.count = x
 		this.save()
 	}
@@ -220,69 +189,44 @@ export class RBNode<K, V> {
 		return this.args.leftId
 	}
 
-	set leftId(x: string | undefined) {
-		if (this.args.leftId === x) {
-			return
-		}
-		this.args.leftId = x
-		this.save()
-	}
-
 	get rightId() {
 		return this.args.rightId
 	}
 
-	set rightId(x: string | undefined) {
-		if (this.args.rightId === x) {
-			return
+	get left(): RBNode<K, V> | undefined {
+		if (this.args.leftId) {
+			const args = this.store.get(this.args.leftId)
+			if (args) {
+				return new RBNode(args, this.store)
+			}
 		}
-		this.args.rightId = x
+	}
+
+	set left(x: RBNode<K, V> | undefined) {
+		if (x) {
+			this.args.leftId = x.id
+		} else {
+			this.args.leftId = undefined
+		}
 		this.save()
 	}
 
-	async getLeft(): Promise<RBNode<K, V> | undefined> {
-		if (this.args.leftId) {
-			return this.txn.get(this.args.leftId)
-		}
-	}
-
-	setLeft(x: RBNode<K, V> | undefined) {
-		if (x) {
-			if (this.args.leftId === x.id) {
-				return
-			}
-			this.args.leftId = x.id
-			this.save()
-		} else {
-			if (this.args.leftId === undefined) {
-				return
-			}
-			this.args.leftId = undefined
-			this.save()
-		}
-	}
-
-	async getRight(): Promise<RBNode<K, V> | undefined> {
+	get right(): RBNode<K, V> | undefined {
 		if (this.args.rightId) {
-			return this.txn.get(this.args.rightId)
+			const args = this.store.get(this.args.rightId)
+			if (args) {
+				return new RBNode(args, this.store)
+			}
 		}
 	}
 
-	// TODO: consolidate with this.rightId =
-	setRight(x: RBNode<K, V> | undefined) {
+	set right(x: RBNode<K, V> | undefined) {
 		if (x) {
-			if (this.args.rightId === x.id) {
-				return
-			}
 			this.args.rightId = x.id
-			this.save()
 		} else {
-			if (this.args.rightId === undefined) {
-				return
-			}
 			this.args.rightId = undefined
-			this.save()
 		}
+		this.save()
 	}
 
 	clone(args?: Partial<RBNodeData<K, V>>): RBNode<K, V> {
@@ -292,7 +236,7 @@ export class RBNode<K, V> {
 				id: randomId(),
 				...args,
 			},
-			this.txn
+			this.store
 		)
 		newNode.save()
 		return newNode
@@ -303,68 +247,59 @@ export class RBNode<K, V> {
 	}
 }
 
-async function recount<K, V>(node: RBNode<K, V>) {
-	const [left, right] = await Promise.all([node.getLeft(), node.getRight()])
-	node.count = 1 + (left ? left.count : 0) + (right ? right.count : 0)
+function recount<K, V>(node: RBNode<K, V>) {
+	node.count =
+		1 + (node.left ? node.left.count : 0) + (node.right ? node.right.count : 0)
 }
 
 export class RedBlackTree<K, V> {
 	public compare: (a: K, b: K) => number
-	public rootId: string | undefined
+	public root: RBNode<K, V> | undefined
 
 	constructor(
 		args: {
 			compare: (a: K, b: K) => number
-			rootId: string | undefined
+			root: RBNode<K, V> | undefined
 		},
-		private store: RBNodeTransaction<K, V>
+		private store: KeyValueStore<string, RBNodeData<K, V>>
 	) {
 		this.compare = args.compare
-		this.rootId = args.rootId
+		this.root = args.root
 	}
 
 	clone(root: RBNode<K, V> | undefined) {
 		return new RedBlackTree({ ...this, root }, this.store)
 	}
 
-	async keys() {
+	get keys() {
 		let result: Array<K> = []
-		await this.forEach(async function(k, v) {
+		this.forEach(function(k, v) {
 			result.push(k)
 		})
 		return result
 	}
 
-	async values() {
+	get values() {
 		let result: Array<V> = []
-		await this.forEach(async function(k, v) {
+		this.forEach(function(k, v) {
 			result.push(v)
 		})
 		return result
 	}
 
 	// Returns the number of nodes in the tree
-	async length() {
-		if (this.rootId) {
-			const root = await this.store.get(this.rootId)
-			if (root) {
-				return root.count
-			}
+	get length() {
+		if (this.root) {
+			return this.root.count
 		}
 		return 0
 	}
 
-	async getRoot() {
-		if (this.rootId) {
-			return this.store.get(this.rootId)
-		}
-	}
-
 	// Insert a new item into the tree
-	async insert(key: K, value: V): Promise<RedBlackTree<K, V>> {
+	insert(key: K, value: V): RedBlackTree<K, V> {
 		let cmp = this.compare
 		// Find point to insert new node at
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		let n_stack: Array<RBNode<K, V>> = []
 		let d_stack: Array<number> = []
 		while (n) {
@@ -372,15 +307,14 @@ export class RedBlackTree<K, V> {
 			n_stack.push(n)
 			d_stack.push(d)
 			if (d <= 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		//Rebuild path to leaf node
 		const newNode = new RBNode(
 			{
-				type: "data",
 				id: randomId(),
 				color: RED,
 				key,
@@ -418,60 +352,60 @@ export class RedBlackTree<K, V> {
 			let pp = n_stack[s - 2]
 			if (pp.leftId === p.id) {
 				if (p.leftId === n.id) {
-					let y = await pp.getRight()
+					let y = pp.right
 					if (y && y.color === RED) {
 						//console.log("LLr")
 						p.color = BLACK
-						pp.setRight(y.repaint(BLACK))
+						pp.right = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("LLb")
 						pp.color = RED
-						pp.setLeft(await p.getRight())
+						pp.left = p.right
 						p.color = BLACK
-						p.setRight(pp)
+						p.right = pp
 						n_stack[s - 2] = p
 						n_stack[s - 1] = n
-						await recount(pp)
-						await recount(p)
+						recount(pp)
+						recount(p)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.leftId === pp.id) {
-								ppp.setLeft(p)
+								ppp.left = p
 							} else {
-								ppp.setRight(p)
+								ppp.right = p
 							}
 						}
 						break
 					}
 				} else {
-					let y = await pp.getRight()
+					let y = pp.right
 					if (y && y.color === RED) {
 						//console.log("LRr")
 						p.color = BLACK
-						pp.setRight(y.repaint(BLACK))
+						pp.right = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("LRb")
-						p.setRight(await n.getLeft())
+						p.right = n.left
 						pp.color = RED
-						pp.setLeft(await n.getRight())
+						pp.left = n.right
 						n.color = BLACK
-						n.setLeft(p)
-						n.setRight(pp)
+						n.left = p
+						n.right = pp
 						n_stack[s - 2] = n
 						n_stack[s - 1] = p
-						await recount(pp)
-						await recount(p)
-						await recount(n)
+						recount(pp)
+						recount(p)
+						recount(n)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.leftId === pp.id) {
-								ppp.setLeft(n)
+								ppp.left = n
 							} else {
-								ppp.setRight(n)
+								ppp.right = n
 							}
 						}
 						break
@@ -479,60 +413,60 @@ export class RedBlackTree<K, V> {
 				}
 			} else {
 				if (p.rightId === n.id) {
-					let y = await pp.getLeft()
+					let y = pp.left
 					if (y && y.color === RED) {
 						//console.log("RRr", y.key)
 						p.color = BLACK
-						pp.setLeft(y.repaint(BLACK))
+						pp.left = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("RRb")
 						pp.color = RED
-						pp.setRight(await p.getLeft())
+						pp.right = p.left
 						p.color = BLACK
-						p.setRight(pp)
+						p.left = pp
 						n_stack[s - 2] = p
 						n_stack[s - 1] = n
-						await recount(pp)
-						await recount(p)
+						recount(pp)
+						recount(p)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.rightId === pp.id) {
-								ppp.setRight(p)
+								ppp.right = p
 							} else {
-								ppp.setLeft(p)
+								ppp.left = p
 							}
 						}
 						break
 					}
 				} else {
-					let y = await pp.getLeft()
+					let y = pp.left
 					if (y && y.color === RED) {
 						//console.log("RLr")
 						p.color = BLACK
-						pp.setLeft(y.repaint(BLACK))
+						pp.left = y.repaint(BLACK)
 						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("RLb")
-						p.setLeft(await n.getRight())
+						p.left = n.right
 						pp.color = RED
-						pp.setRight(await n.getLeft())
+						pp.right = n.left
 						n.color = BLACK
-						n.setRight(p)
-						n.setLeft(pp)
+						n.right = p
+						n.left = pp
 						n_stack[s - 2] = n
 						n_stack[s - 1] = p
-						await recount(pp)
-						await recount(p)
-						await recount(n)
+						recount(pp)
+						recount(p)
+						recount(n)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.rightId === pp.id) {
-								ppp.setRight(n)
+								ppp.right = n
 							} else {
-								ppp.setLeft(n)
+								ppp.left = n
 							}
 						}
 						break
@@ -542,83 +476,64 @@ export class RedBlackTree<K, V> {
 		}
 		//Return new tree
 		n_stack[0].color = BLACK
-
-		return new RedBlackTree({ compare: cmp, rootId: n_stack[0].id }, this.store)
+		return new RedBlackTree({ compare: cmp, root: n_stack[0] }, this.store)
 	}
 
-	async forEach<T>(
-		fn: (key: K, value: V) => Promise<T>,
-		lo?: K,
-		hi?: K
-	): Promise<T | undefined> {
-		if (!this.rootId) {
+	forEach<T>(fn: (key: K, value: V) => T, lo?: K, hi?: K): T | undefined {
+		if (!this.root) {
 			return
 		}
-		const root = await this.store.get(this.rootId)
-		if (!root) {
-			return
-		}
-
 		if (lo !== undefined) {
 			if (hi !== undefined) {
 				if (this.compare(lo, hi) >= 0) {
 					return
 				}
-				const result = await doVisit(lo, hi, this.compare, fn, root)
-				return result
+				return doVisit(lo, hi, this.compare, fn, this.root)
 			} else {
-				const result = await doVisitHalf(lo, this.compare, fn, root)
-				return result
+				return doVisitHalf(lo, this.compare, fn, this.root)
 			}
 		} else {
-			const result = await doVisitFull(fn, root)
-			return result
+			return doVisitFull(fn, this.root)
 		}
 	}
 
 	//First item in list
-	async begin(): Promise<RedBlackTreeIterator<K, V>> {
+	get begin(): RedBlackTreeIterator<K, V> {
 		let stack: Array<RBNode<K, V>> = []
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		while (n) {
 			stack.push(n)
-			n = await n.getLeft()
+			n = n.left
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
 	}
 
 	//Last item in list
-	async end(): Promise<RedBlackTreeIterator<K, V>> {
+	get end(): RedBlackTreeIterator<K, V> {
 		let stack: Array<RBNode<K, V>> = []
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		while (n) {
 			stack.push(n)
-			n = await n.getRight()
+			n = n.right
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
 	}
 
 	//Find the ith item in the tree
-	async at(idx: number): Promise<RedBlackTreeIterator<K, V>> {
-		if (idx < 0 || !this.rootId) {
+	at(idx: number): RedBlackTreeIterator<K, V> {
+		if (idx < 0 || !this.root) {
 			return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
 		}
-		const root = this.rootId ? await this.store.get(this.rootId) : undefined
-		if (!root) {
-			return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
-		}
-
-		let n = root
+		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
 		while (true) {
 			stack.push(n)
-			const left = await n.getLeft()
-			if (left) {
-				if (idx < left.count) {
-					n = left
+			if (n.left) {
+				if (idx < n.left.count) {
+					n = n.left
 					continue
 				}
-				idx -= left.count
+				idx -= n.left.count
 			}
 			if (!idx) {
 				return new RedBlackTreeIterator(
@@ -627,12 +542,11 @@ export class RedBlackTree<K, V> {
 				)
 			}
 			idx -= 1
-			const right = await n.getRight()
-			if (right) {
-				if (idx >= right.count) {
+			if (n.right) {
+				if (idx >= n.right.count) {
 					break
 				}
-				n = right
+				n = n.right
 			} else {
 				break
 			}
@@ -640,9 +554,9 @@ export class RedBlackTree<K, V> {
 		return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
 	}
 
-	async ge(key: K): Promise<RedBlackTreeIterator<K, V>> {
+	ge(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
@@ -652,18 +566,18 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d <= 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		stack.length = last_ptr
 		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
 	}
 
-	async gt(key: K): Promise<RedBlackTreeIterator<K, V>> {
+	gt(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
@@ -673,18 +587,18 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d < 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		stack.length = last_ptr
 		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
 	}
 
-	async lt(key: K): Promise<RedBlackTreeIterator<K, V>> {
+	lt(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
@@ -694,18 +608,18 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d <= 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		stack.length = last_ptr
 		return new RedBlackTreeIterator({ tree: this, stack }, this.store)
 	}
 
-	async le(key: K): Promise<RedBlackTreeIterator<K, V>> {
+	le(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
@@ -715,9 +629,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d < 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		stack.length = last_ptr
@@ -725,9 +639,9 @@ export class RedBlackTree<K, V> {
 	}
 
 	//Finds the item with key if it exists
-	async find(key: K): Promise<RedBlackTreeIterator<K, V>> {
+	find(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		let stack: Array<RBNode<K, V>> = []
 		while (n) {
 			let d = cmp(key, n.key)
@@ -736,17 +650,17 @@ export class RedBlackTree<K, V> {
 				return new RedBlackTreeIterator({ tree: this, stack }, this.store)
 			}
 			if (d <= 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
 	}
 
 	//Removes item with key from tree
-	async remove(key: K): Promise<RedBlackTree<K, V>> {
-		let iter = await this.find(key)
+	remove(key: K): RedBlackTree<K, V> {
+		let iter = this.find(key)
 		if (iter) {
 			return iter.remove()
 		}
@@ -754,18 +668,18 @@ export class RedBlackTree<K, V> {
 	}
 
 	//Returns the item at `key`
-	async get(key: K) {
+	get(key: K) {
 		let cmp = this.compare
-		let n = this.rootId ? await this.store.get(this.rootId) : undefined
+		let n = this.root
 		while (n) {
 			let d = cmp(key, n.key)
 			if (d === 0) {
 				return n.value
 			}
 			if (d <= 0) {
-				n = await n.getLeft()
+				n = n.left
 			} else {
-				n = await n.getRight()
+				n = n.right
 			}
 		}
 		return
@@ -773,13 +687,12 @@ export class RedBlackTree<K, V> {
 }
 
 // Visit all nodes inorder
-async function doVisitFull<K, V, T>(
+function doVisitFull<K, V, T>(
 	fn: (key: K, value: V) => T,
 	node: RBNode<K, V>
-): Promise<T | undefined> {
-	const left = await node.getLeft()
-	if (left) {
-		let v = await doVisitFull(fn, left)
+): T | undefined {
+	if (node.left) {
+		let v = doVisitFull(fn, node.left)
 		if (v) {
 			return v
 		}
@@ -788,24 +701,22 @@ async function doVisitFull<K, V, T>(
 	if (v) {
 		return v
 	}
-	const right = await node.getRight()
-	if (right) {
-		return doVisitFull(fn, right)
+	if (node.right) {
+		return doVisitFull(fn, node.right)
 	}
 }
 
 // Visit half nodes in order
-async function doVisitHalf<K, V, T>(
+function doVisitHalf<K, V, T>(
 	lo: K,
 	compare: (a: K, b: K) => number,
 	fn: (key: K, value: V) => T,
 	node: RBNode<K, V>
-): Promise<T | undefined> {
+): T | undefined {
 	let l = compare(lo, node.key)
 	if (l <= 0) {
-		const left = await node.getLeft()
-		if (left) {
-			let v = doVisitHalf(lo, compare, fn, left)
+		if (node.left) {
+			let v = doVisitHalf(lo, compare, fn, node.left)
 			if (v) {
 				return v
 			}
@@ -815,27 +726,25 @@ async function doVisitHalf<K, V, T>(
 			return v
 		}
 	}
-	const right = await node.getRight()
-	if (right) {
-		return doVisitHalf(lo, compare, fn, right)
+	if (node.right) {
+		return doVisitHalf(lo, compare, fn, node.right)
 	}
 }
 
 //Visit all nodes within a range
-async function doVisit<K, V, T>(
+function doVisit<K, V, T>(
 	lo: K,
 	hi: K,
 	compare: (a: K, b: K) => number,
 	fn: (key: K, value: V) => T,
 	node: RBNode<K, V>
-): Promise<T | undefined> {
+): T | undefined {
 	let l = compare(lo, node.key)
 	let h = compare(hi, node.key)
 	let v
 	if (l <= 0) {
-		const left = await node.getLeft()
-		if (left) {
-			v = doVisit(lo, hi, compare, fn, left)
+		if (node.left) {
+			v = doVisit(lo, hi, compare, fn, node.left)
 			if (v) {
 				return v
 			}
@@ -847,11 +756,8 @@ async function doVisit<K, V, T>(
 			}
 		}
 	}
-	if (h > 0) {
-		const right = await node.getRight()
-		if (right) {
-			return doVisit(lo, hi, compare, fn, right)
-		}
+	if (h > 0 && node.right) {
+		return doVisit(lo, hi, compare, fn, node.right)
 	}
 }
 
@@ -862,7 +768,7 @@ export class RedBlackTreeIterator<K, V> {
 
 	constructor(
 		args: { tree: RedBlackTree<K, V>; stack: Array<RBNode<K, V>> },
-		private store: RBNodeTransaction<K, V>
+		private store: KeyValueStore<string, RBNodeData<K, V>>
 	) {
 		this.tree = args.tree
 		this.stack = args.stack
@@ -894,7 +800,7 @@ export class RedBlackTreeIterator<K, V> {
 	}
 
 	//Removes item at iterator from tree
-	async remove(): Promise<RedBlackTree<K, V>> {
+	remove(): RedBlackTree<K, V> {
 		let stack = this.stack
 		if (stack.length === 0) {
 			return this.tree
@@ -920,18 +826,16 @@ export class RedBlackTreeIterator<K, V> {
 		n = cstack[cstack.length - 1]
 		//console.log("start remove: ", n.value)
 
-		const [left, right] = await Promise.all([n.getLeft(), n.getRight()])
-
 		//If not leaf, then swap with previous node
-		if (left && right) {
+		if (n.left && n.right) {
 			//console.log("moving to leaf")
 
 			//First walk to previous leaf
 			let split = cstack.length
-			n = left
-			while (right) {
+			n = n.left
+			while (n.right) {
 				cstack.push(n)
-				n = right
+				n = n.right
 			}
 			//Copy path to leaf
 			let v = cstack[split - 1]
@@ -946,7 +850,7 @@ export class RedBlackTreeIterator<K, V> {
 					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
 				})
 			}
-			cstack[split - 1].setLeft(cstack[split])
+			cstack[split - 1].left = cstack[split]
 		}
 		//console.log("stack=", cstack.map(function(v) { return v.value }))
 
@@ -957,9 +861,9 @@ export class RedBlackTreeIterator<K, V> {
 			//console.log("RED leaf")
 			let p = cstack[cstack.length - 2]
 			if (p.leftId === n.id) {
-				p.setLeft(undefined)
+				p.left = undefined
 			} else if (p.rightId === n.id) {
-				p.setRight(undefined)
+				p.right = undefined
 			}
 			cstack.pop()
 			for (let i = 0; i < cstack.length; ++i) {
@@ -967,15 +871,13 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			return this.tree.clone(cstack[0])
 		} else {
-			const [left, right] = await Promise.all([n.getLeft(), n.getRight()])
-
-			if (left || right) {
+			if (n.left || n.right) {
 				//Second easy case:  Single child black parent
 				//console.log("BLACK single child")
-				if (left) {
-					await swapNode(n, left)
-				} else if (right) {
-					await swapNode(n, right)
+				if (n.left) {
+					swapNode(n, n.left)
+				} else if (n.right) {
+					swapNode(n, n.right)
 				}
 				//Child must be red, so repaint it black to balance color
 				n.color = BLACK
@@ -994,12 +896,12 @@ export class RedBlackTreeIterator<K, V> {
 					cstack[i].count--
 				}
 				let parent = cstack[cstack.length - 2]
-				await fixDoubleBlack(cstack)
+				fixDoubleBlack(cstack)
 				//Fix up links
 				if (parent.leftId === n.id) {
-					parent.setLeft(undefined)
+					parent.left = undefined
 				} else {
-					parent.setRight(undefined)
+					parent.right = undefined
 				}
 			}
 		}
@@ -1023,31 +925,23 @@ export class RedBlackTreeIterator<K, V> {
 	}
 
 	//Returns the position of this iterator in the sorted list
-	async index() {
+	get index() {
 		let idx = 0
 		let stack = this.stack
 		if (stack.length === 0) {
-			let r = this.tree.rootId
-				? await this.store.get(this.tree.rootId)
-				: undefined
-
+			let r = this.tree.root
 			if (r) {
 				return r.count
 			}
 			return 0
-		} else {
-			const left = await stack[stack.length - 1].getLeft()
-			if (left) {
-				idx = left.count
-			}
+		} else if (stack[stack.length - 1].left) {
+			idx = (stack[stack.length - 1].left as RBNode<K, V>).count
 		}
-
 		for (let s = stack.length - 2; s >= 0; --s) {
 			if (stack[s + 1].id === stack[s].rightId) {
 				++idx
-				const left = await stack[s].getLeft()
-				if (left) {
-					idx += left.count
+				if (stack[s].left) {
+					idx += (stack[s].left as RBNode<K, V>).count
 				}
 			}
 		}
@@ -1055,18 +949,17 @@ export class RedBlackTreeIterator<K, V> {
 	}
 
 	//Advances iterator to next element in list
-	async next() {
+	next() {
 		let stack = this.stack
 		if (stack.length === 0) {
 			return
 		}
 		let n: RBNode<K, V> | undefined = stack[stack.length - 1]
-		const right = await n.getRight()
-		if (right) {
-			n = right
+		if (n.right) {
+			n = n.right
 			while (n) {
 				stack.push(n)
-				n = await n.getLeft()
+				n = n.left
 			}
 		} else {
 			stack.pop()
@@ -1078,12 +971,12 @@ export class RedBlackTreeIterator<K, V> {
 	}
 
 	//Checks if iterator is at end of tree
-	hasNext() {
+	get hasNext() {
 		let stack = this.stack
 		if (stack.length === 0) {
 			return false
 		}
-		if (stack[stack.length - 1].rightId) {
+		if (stack[stack.length - 1].right) {
 			return true
 		}
 		for (let s = stack.length - 1; s > 0; --s) {
@@ -1100,7 +993,7 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return false
 		}
-		if (stack[stack.length - 1].leftId) {
+		if (stack[stack.length - 1].left) {
 			return true
 		}
 		for (let s = stack.length - 1; s > 0; --s) {
@@ -1138,18 +1031,17 @@ export class RedBlackTreeIterator<K, V> {
 	}
 
 	//Moves iterator backward one element
-	async prev() {
+	prev() {
 		let stack = this.stack
 		if (stack.length === 0) {
 			return
 		}
 		let n: RBNode<K, V> | undefined = stack[stack.length - 1]
-		const left = await n.getLeft()
-		if (left) {
-			n = left
+		if (n.left) {
+			n = n.left
 			while (n) {
 				stack.push(n)
-				n = await n.getRight()
+				n = n.right
 			}
 		} else {
 			stack.pop()
@@ -1162,17 +1054,17 @@ export class RedBlackTreeIterator<K, V> {
 }
 
 //Swaps two nodes
-async function swapNode<K, V>(n: RBNode<K, V>, v: RBNode<K, V>) {
+function swapNode<K, V>(n: RBNode<K, V>, v: RBNode<K, V>) {
 	n.key = v.key
 	n.value = v.value
-	n.setLeft(await v.getLeft())
-	n.setRight(await v.getRight())
+	n.left = v.left
+	n.right = v.right
 	n.color = v.color
 	n.count = v.count
 }
 
 //Fix up a double black node in a tree
-async function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
+function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
 	for (let i = stack.length - 1; i >= 0; --i) {
 		let n = stack[i]
 		if (i === 0) {
@@ -1183,96 +1075,85 @@ async function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
 		let p = stack[i - 1]
 		if (p.leftId === n.id) {
 			//console.log("left child")
-			let s = await p.getRight()
+			let s = p.right
 			if (!s) {
 				throw new Error("This cannot happen")
 			}
-			const right = await s.getRight()
-			if (right && right.color === RED) {
+			if (s.right && s.right.color === RED) {
 				//console.log("case 1: right sibling child red")
-				s = s.clone()
-				p.setRight(s)
-
-				// TODO: could probably clean things up here.
-				let z = right.clone()
-				s.setRight(z)
-				s.rightId = s.leftId
-				s.setLeft(p)
-				s.setRight(z)
+				s = p.right = s.clone()
+				let z = (s.right = (s.right as RBNode<K, V>).clone())
+				p.right = s.left
+				s.left = p
+				s.right = z
 				s.color = p.color
 				n.color = BLACK
 				p.color = BLACK
 				z.color = BLACK
-				await recount(p)
-				await recount(s)
+				recount(p)
+				recount(s)
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.leftId === p.id) {
-						pp.setLeft(s)
+						pp.left = s
 					} else {
-						pp.setRight(s)
+						pp.right = s
 					}
 				}
 				stack[i - 1] = s
 				return
-			} else {
-				const left = await s.getLeft()
-				if (left && left.color === RED) {
-					//console.log("case 1: left sibling child red")
-					s = s.clone()
-					p.setRight(s)
-
-					let z = left.clone()
-					s.setLeft(z)
-					p.rightId = z.leftId
-					s.leftId = z.rightId
-					z.setLeft(p)
-					z.setRight(s)
-					z.color = p.color
-					p.color = BLACK
-					s.color = BLACK
-					n.color = BLACK
-					await recount(p)
-					await recount(s)
-					await recount(z)
-					if (i > 1) {
-						let pp = stack[i - 2]
-						if (pp.leftId === p.id) {
-							pp.setLeft(z)
-						} else {
-							pp.setRight(z)
-						}
+			} else if (s.left && s.left.color === RED) {
+				//console.log("case 1: left sibling child red")
+				s = p.right = s.clone()
+				let z = (s.left = (s.left as RBNode<K, V>).clone())
+				p.right = z.left
+				s.left = z.right
+				z.left = p
+				z.right = s
+				z.color = p.color
+				p.color = BLACK
+				s.color = BLACK
+				n.color = BLACK
+				recount(p)
+				recount(s)
+				recount(z)
+				if (i > 1) {
+					let pp = stack[i - 2]
+					if (pp.leftId === p.id) {
+						pp.left = z
+					} else {
+						pp.right = z
 					}
-					stack[i - 1] = z
-					return
 				}
+				stack[i - 1] = z
+				return
 			}
 			if (s.color === BLACK) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent", p.right.value)
 					p.color = BLACK
-					p.setRight(s.repaint(RED))
+					p.right = s.repaint(RED)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent", p.right.value)
-					p.setRight(s.repaint(RED))
+					p.right = s.repaint(RED)
 					continue
 				}
 			} else {
 				//console.log("case 3: red sibling")
 				s = s.clone()
-				p.rightId = s.leftId
-				s.setLeft(p)
+				p.right = s.left
+				s.left = p
 				s.color = p.color
 				p.color = RED
-				await recount(p)
-				await recount(s)
+				recount(p)
+				recount(s)
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.leftId === p.id) {
-						pp.setLeft(s)
+						pp.left = s
 					} else {
-						pp.setRight(s)
+						pp.right = s
 					}
 				}
 				stack[i - 1] = s
@@ -1286,97 +1167,85 @@ async function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
 			}
 		} else {
 			//console.log("right child")
-			let s = await p.getLeft()
+			let s = p.left
 			if (!s) {
 				throw new Error("This cannot happen")
 			}
-			const left = await s.getLeft()
-			if (left && left.color === RED) {
+			if (s.left && s.left.color === RED) {
 				//console.log("case 1: left sibling child red", p.value, p._color)
-				s = s.clone()
-				p.setLeft(s)
-
-				let z = left.clone()
-				s.setLeft(z)
-
-				p.leftId = s.rightId
-				s.setRight(p)
-				s.setLeft(z)
+				s = p.left = s.clone()
+				let z = (s.left = (s.left as RBNode<K, V>).clone())
+				p.left = s.right
+				s.right = p
+				s.left = z
 				s.color = p.color
 				n.color = BLACK
 				p.color = BLACK
 				z.color = BLACK
-				await recount(p)
-				await recount(s)
+				recount(p)
+				recount(s)
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.rightId === p.id) {
-						pp.setRight(s)
+						pp.right = s
 					} else {
-						pp.setLeft(s)
+						pp.left = s
 					}
 				}
 				stack[i - 1] = s
 				return
-			} else {
-				const right = await s.getRight()
-				if (right && right.color === RED) {
-					//console.log("case 1: right sibling child red")
-					s = s.clone()
-					p.setLeft(s)
-
-					let z = right.clone()
-					s.setRight(z)
-
-					p.leftId = z.rightId
-					s.rightId = z.leftId
-					z.setRight(p)
-					z.setLeft(s)
-					z.color = p.color
-					p.color = BLACK
-					s.color = BLACK
-					n.color = BLACK
-					await recount(p)
-					await recount(s)
-					await recount(z)
-					if (i > 1) {
-						let pp = stack[i - 2]
-						if (pp.rightId === p.id) {
-							pp.setRight(z)
-						} else {
-							pp.setLeft(z)
-						}
+			} else if (s.right && s.right.color === RED) {
+				//console.log("case 1: right sibling child red")
+				s = p.left = s.clone()
+				let z = (s.right = (s.right as RBNode<K, V>).clone())
+				p.left = z.right
+				s.right = z.left
+				z.right = p
+				z.left = s
+				z.color = p.color
+				p.color = BLACK
+				s.color = BLACK
+				n.color = BLACK
+				recount(p)
+				recount(s)
+				recount(z)
+				if (i > 1) {
+					let pp = stack[i - 2]
+					if (pp.rightId === p.id) {
+						pp.right = z
+					} else {
+						pp.left = z
 					}
-					stack[i - 1] = z
-					return
 				}
+				stack[i - 1] = z
+				return
 			}
 			if (s.color === BLACK) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent")
 					p.color = BLACK
-					p.setLeft(s.repaint(RED))
+					p.left = s.repaint(RED)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent")
-					p.setLeft(s.repaint(RED))
+					p.left = s.repaint(RED)
 					continue
 				}
 			} else {
 				//console.log("case 3: red sibling")
 				s = s.clone()
-				p.leftId = s.rightId
-				s.setRight(p)
+				p.left = s.right
+				s.right = p
 				s.color = p.color
 				p.color = RED
-				await recount(p)
-				await recount(s)
+				recount(p)
+				recount(s)
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.rightId === p.id) {
-						pp.setRight(s)
+						pp.right = s
 					} else {
-						pp.setLeft(s)
+						pp.left = s
 					}
 				}
 				stack[i - 1] = s
@@ -1407,16 +1276,13 @@ function defaultCompare<K>(a: K, b: K) {
 
 const store = new InMemoryKeyValueStore()
 const nodeStore = new RBNodeDataStore<any, any>(store)
-// TODO: need to think harder about how to pass this through and commit transactions.
-const txn = new RBNodeTransaction(nodeStore)
-
 function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
 	return new RedBlackTree<K, V>(
 		{
 			compare: compare || defaultCompare,
-			rootId: undefined,
+			root: undefined,
 		},
-		txn
+		nodeStore
 	)
 }
 
