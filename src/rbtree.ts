@@ -3,24 +3,20 @@
 Game Plan:
 - [x] convert to typescript.
 - [x] persist to a key-value map.
-	- [ ] write transactionally
+- [ ] convert everything to async
+	- [ ] no more setters and getters
+	- [ ] just async key-value-store
+	- [ ] eliminate RBNode and just use plain functions.
+
+
+- [ ] write transactionally
 - [ ] persist to leveldb.
-	- [ ] generators to run sync or async
+- [ ] generators to run sync or async
 
 - how to we persist to async storage with the same api?
 
 
 */
-
-// class Task<I> {
-// 	constructor(public i: I) {}
-
-// 	static chain<
-// 		A extends keyof OutputMap,
-// 		B,
-// 		OutputMap extends { [type: string]: any }
-// 	>(args: [() => Task<A>, (arg: OutputMap[A]) => B]): B {}
-// }
 
 interface KeyValueStore<K, V> {
 	get(key: K): V | undefined
@@ -57,65 +53,6 @@ class RBNodeDataStore<K, V> implements KeyValueStore<string, RBNodeData<K, V>> {
 		this.store.delete(key)
 	}
 }
-
-// class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
-// 	private cache: Record<string, RBNode<K, V>> = {}
-// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
-
-// 	get(key: string): RBNode<K, V> | undefined {
-// 		const value = this.store.get(key)
-// 		if (value !== undefined) {
-// 			this.cache[key] = value
-// 		}
-// 		return value
-// 	}
-// 	set(key: string, value: RBNode<K, V>): void {
-// 		this.store.set(key, value)
-// 		this.cache[key] = value
-// 	}
-// 	delete(key: string): void {
-// 		this.store.delete(key)
-// 		delete this.cache[key]
-// 	}
-// }
-
-// class RBNodeTransaction<K, V> implements KeyValueStore<string, RBNode<K, V>> {
-// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
-
-// 	cache: Record<string, RBNode<K, V>> = {}
-// 	operations: Record<
-// 		string,
-// 		{ type: "set"; value: RBNode<K, V> } | { type: "delete" }
-// 	> = {}
-
-// 	get(key: string): RBNode<K, V> | undefined {
-// 		const value = this.store.get(key)
-// 		if (value !== undefined) {
-// 			this.cache[key] = value
-// 		}
-// 		return value
-// 	}
-
-// 	set(key: string, value: RBNode<K, V>): void {
-// 		this.cache[key] = value
-// 		this.operations[key] = { type: "set", value }
-// 	}
-
-// 	delete(key: string): void {
-// 		delete this.cache[key]
-// 		this.operations[key] = { type: "delete" }
-// 	}
-
-// 	commit() {
-// 		for (const [id, operation] of Object.entries(this.operations)) {
-// 			if (operation.type === "delete") {
-// 				this.store.delete(id)
-// 			} else {
-// 				this.store.set(id, operation.value)
-// 			}
-// 		}
-// 	}
-// }
 
 function randomId() {
 	return Math.round(Math.random() * 1e10).toString()
