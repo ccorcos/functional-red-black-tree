@@ -16,8 +16,8 @@ function printTree<K, V>(tree: RBNode<K, V> | undefined): any {
 	return [
 		COLORS[tree.color],
 		tree.key,
-		printTree(tree.left),
-		printTree(tree.right),
+		printTree(tree.getLeft()),
+		printTree(tree.getRight()),
 	]
 }
 
@@ -36,32 +36,31 @@ function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
 		if (!node) {
 			return [1, 0]
 		}
+		const left = node.getLeft()
+		const right = node.getRight()
 		if (node.color === 0) {
+			t.assert(!left || left.color === 1, "children of red node must be black")
 			t.assert(
-				!node.left || node.left.color === 1,
-				"children of red node must be black"
-			)
-			t.assert(
-				!node.right || node.right.color === 1,
+				!right || right.color === 1,
 				"children of red node must be black"
 			)
 		} else {
 			t.equals(node.color, 1, "node color must be red or black")
 		}
-		if (node.left) {
+		if (left) {
 			t.assert(
-				tree.compare(node.left.key, node.key) <= 0,
+				tree.compare(left.key, node.key) <= 0,
 				"left tree order invariant"
 			)
 		}
-		if (node.right) {
+		if (right) {
 			t.assert(
-				tree.compare(node.right.key, node.key) >= 0,
+				tree.compare(right.key, node.key) >= 0,
 				"right tree order invariant"
 			)
 		}
-		var cl = checkNode(node.left)
-		var cr = checkNode(node.right)
+		var cl = checkNode(left)
+		var cr = checkNode(right)
 		t.equals(
 			cl[0],
 			cr[0],
