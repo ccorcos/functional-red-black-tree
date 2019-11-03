@@ -99,7 +99,6 @@ export class RBNode<K, V> {
 		return this.get().rightId
 	}
 
-	// TODO: make these all immutable!
 	setColor(x: 0 | 1) {
 		this.store.set({
 			...this.get(),
@@ -196,6 +195,10 @@ function recount<K, V>(node: RBNode<K, V>) {
 	const right = node.getRight()
 	node.setCount(1 + (left ? left.count : 0) + (right ? right.count : 0))
 }
+
+// ========================================================
+// RedBlackTree
+// ========================================================
 
 export class RedBlackTree<K, V> {
 	public compare: (a: K, b: K) => number
@@ -736,6 +739,10 @@ function doVisit<K, V, T>(
 		}
 	}
 }
+
+// ========================================================
+// RedBlackTreeIterator
+// ========================================================
 
 //Iterator for red black tree
 export class RedBlackTreeIterator<K, V> {
