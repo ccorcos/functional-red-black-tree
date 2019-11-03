@@ -20,6 +20,12 @@ Game Plan:
 
 /*
 
+https://www.geeksforgeeks.org/red-black-tree-set-2-insert/
+
+
+*/
+
+/*
 
 interface KeyValueStore<K, V> {
 	get(key: K): Promise<V | undefined>
@@ -401,6 +407,8 @@ export class RedBlackTree<K, V> {
 				})
 			}
 		}
+
+		// 8 types of rotations.
 		//Rebalance tree using rotations
 		//console.log("start insert", key, d_stack)
 		for (let s = n_stack.length - 1; s > 1; --s) {
@@ -409,11 +417,20 @@ export class RedBlackTree<K, V> {
 			if (p.color === BLACK || n.color === BLACK) {
 				break
 			}
+
 			let pp = n_stack[s - 2]
 			if (pp.leftId === p.id) {
 				if (p.leftId === n.id) {
 					let y = pp.getRight()
 					if (y && y.color === RED) {
+						//
+						//      (pp)
+						//      /  \
+						//    (p)  (y)
+						//    /
+						//  (n)
+						//
+
 						//console.log("LLr")
 						p.setColor(BLACK)
 						pp.setRight(y.repaint(BLACK))
