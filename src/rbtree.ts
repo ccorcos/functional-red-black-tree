@@ -5,6 +5,7 @@ Game Plan:
 - Separate `insert`, `update`, and `remove` from the rest of
 	the code. That's the only part that requires a transaction.
 
+- Two classes of RBNode. Only get a writable node from a transaction.
 
 
 - [ ] convert everything to async
