@@ -33,35 +33,16 @@ class InMemoryKeyValueStore {
 
 class RBNodeDataStore<K, V> {
 	constructor(private store: InMemoryKeyValueStore) {}
-	get(key: string): RBNodeData<K, V> | undefined {
-		const result = this.store.get(key)
+	get(id: string): RBNodeData<K, V> | undefined {
+		const result = this.store.get(id)
 		if (result) {
 			return JSON.parse(result)
 		}
 	}
-	set(key: string, value: RBNodeData<K, V>): void {
-		this.store.set(key, JSON.stringify(value))
-	}
-	delete(key: string): void {
-		this.store.delete(key)
+	set(value: RBNodeData<K, V>): void {
+		this.store.set(value.id, JSON.stringify(value))
 	}
 }
-
-// class RBNodeDataCache<K, V> {
-// 	private cache: Record<string, RBNodeData<K, V>> = {}
-// 	constructor(private store: RBNodeDataStore<K, V>) {}
-// 	get(key: string): RBNodeData<K, V> | undefined {
-// 		const value = this.store.get(key)
-// 		if (value !== undefined) {
-// 			this.cache[key] = value
-// 		}
-// 		return value
-// 	}
-// 	set(key: string, value: RBNodeData<K, V>): void {
-// 		this.store.set(key, value)
-// 		this.cache[key] = value
-// 	}
-// }
 
 function randomId() {
 	return Math.round(Math.random() * 1e10).toString()
@@ -91,7 +72,7 @@ export class RBNode<K, V> {
 	}
 
 	save() {
-		this.store.set(this.args.id, this.args)
+		this.store.set(this.args)
 	}
 
 	get color() {
