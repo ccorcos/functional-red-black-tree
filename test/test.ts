@@ -1,8 +1,7 @@
 import makeTree, {
 	RedBlackTree,
+	RBNode,
 	RedBlackTreeIterator,
-	KeyValueStore,
-	RBNodeData,
 } from "../src/rbtree"
 import * as tape from "tape"
 import * as util from "util"
@@ -10,23 +9,20 @@ const iota = require("iota-array") as (n: number) => Array<number>
 
 var COLORS = ["r", "b", "bb"]
 
-function printTree<K, V>(
-	tree: RBNodeData<K, V> | undefined,
-	store: KeyValueStore<string, RBNodeData<K, V>>
-): any {
+function printTree<K, V>(tree: RBNode<K, V> | undefined): any {
 	if (!tree) {
 		return []
 	}
 	return [
 		COLORS[tree.color],
 		tree.key,
-		printTree(tree.leftId ? store.get(tree.leftId) : undefined, store),
-		printTree(tree.rightId ? store.get(tree.rightId) : undefined, store),
+		printTree(tree.getLeft()),
+		printTree(tree.getRight()),
 	]
 }
 
 function print<K, V>(t: RedBlackTree<K, V>) {
-	console.log(util.inspect(printTree(t.getRoot(), t.store), { depth: 12 }))
+	console.log(util.inspect(printTree(t.getRoot()), { depth: 12 }))
 }
 
 //Ensures the red black axioms are satisfied by tree
@@ -36,12 +32,12 @@ function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
 		return
 	}
 	t.equals(root.color, 1, "root is black")
-	function checkNode(node: RBNodeData<K, V> | undefined): [number, number] {
+	function checkNode(node: RBNode<K, V> | undefined): [number, number] {
 		if (!node) {
 			return [1, 0]
 		}
-		const left = tree.getLeft(node)
-		const right = tree.getRight(node)
+		const left = node.getLeft()
+		const right = node.getRight()
 		if (node.color === 0) {
 			t.assert(!left || left.color === 1, "children of red node must be black")
 			t.assert(
