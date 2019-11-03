@@ -135,7 +135,7 @@ class RBNodeTransaction<K, V> {
 
 */
 
-interface KeyValueStore<K, V> {
+export interface KeyValueStore<K, V> {
 	get(key: K): V | undefined
 	set(key: K, value: V): void
 	delete(key: K): void
@@ -178,7 +178,7 @@ function randomId() {
 let RED = 0 as const
 let BLACK = 1 as const
 
-interface RBNodeData<K, V> {
+export interface RBNodeData<K, V> {
 	id: string
 	color: 1 | 0
 	key: K
@@ -186,126 +186,6 @@ interface RBNodeData<K, V> {
 	leftId: string | undefined
 	rightId: string | undefined
 	count: number
-}
-
-export class RBNode<K, V> {
-	public readonly id: string
-
-	constructor(
-		private args: RBNodeData<K, V>,
-		private store: KeyValueStore<string, RBNodeData<K, V>>
-	) {
-		this.id = args.id
-	}
-
-	save() {
-		this.store.set(this.args.id, this.args)
-	}
-
-	get color() {
-		return this.args.color
-	}
-
-	get key() {
-		return this.args.key
-	}
-
-	get value() {
-		return this.args.value
-	}
-
-	get count() {
-		return this.args.count
-	}
-
-	get leftId() {
-		return this.args.leftId
-	}
-
-	get rightId() {
-		return this.args.rightId
-	}
-
-	// TODO: make these all immutable!
-	setColor(x: 0 | 1) {
-		// TODO: only save if it changed.
-		this.args.color = x
-		this.save()
-	}
-
-	setKey(x: K) {
-		this.args.key = x
-		this.save()
-	}
-
-	setValue(x: V) {
-		this.args.value = x
-		this.save()
-	}
-
-	setCount(x: number) {
-		this.args.count = x
-		this.save()
-	}
-
-	getLeft(): RBNode<K, V> | undefined {
-		if (this.args.leftId) {
-			const args = this.store.get(this.args.leftId)
-			if (args) {
-				return new RBNode(args, this.store)
-			}
-		}
-	}
-
-	setLeft(x: RBNode<K, V> | undefined) {
-		if (x) {
-			this.args.leftId = x.id
-		} else {
-			this.args.leftId = undefined
-		}
-		this.save()
-	}
-
-	getRight(): RBNode<K, V> | undefined {
-		if (this.args.rightId) {
-			const args = this.store.get(this.args.rightId)
-			if (args) {
-				return new RBNode(args, this.store)
-			}
-		}
-	}
-
-	setRight(x: RBNode<K, V> | undefined) {
-		if (x) {
-			this.args.rightId = x.id
-		} else {
-			this.args.rightId = undefined
-		}
-		this.save()
-	}
-
-	clone(args?: Partial<RBNodeData<K, V>>): RBNode<K, V> {
-		const newNode = new RBNode(
-			{
-				...this.args,
-				id: randomId(),
-				...args,
-			},
-			this.store
-		)
-		newNode.save()
-		return newNode
-	}
-
-	repaint(color: 1 | 0) {
-		return this.clone({ color })
-	}
-}
-
-function recount<K, V>(node: RBNode<K, V>) {
-	const left = node.getLeft()
-	const right = node.getRight()
-	node.setCount(1 + (left ? left.count : 0) + (right ? right.count : 0))
 }
 
 export class RedBlackTree<K, V> {
@@ -317,7 +197,7 @@ export class RedBlackTree<K, V> {
 			compare: (a: K, b: K) => number
 			rootId: string | undefined
 		},
-		private store: KeyValueStore<string, RBNodeData<K, V>>
+		public store: KeyValueStore<string, RBNodeData<K, V>>
 	) {
 		this.compare = args.compare
 		this.rootId = args.rootId
@@ -345,11 +225,26 @@ export class RedBlackTree<K, V> {
 
 	getRoot() {
 		if (this.rootId) {
-			const data = this.store.get(this.rootId)
-			if (data) {
-				return new RBNode(data, this.store)
-			}
+			return this.store.get(this.rootId)
 		}
+	}
+
+	getLeft(n: RBNodeData<K, V>): RBNodeData<K, V> | undefined {
+		if (n.leftId) {
+			return this.store.get(n.leftId)
+		}
+	}
+
+	getRight(n: RBNodeData<K, V>): RBNodeData<K, V> | undefined {
+		if (n.rightId) {
+			return this.store.get(n.rightId)
+		}
+	}
+
+	recount(n: RBNodeData<K, V>) {
+		const left = this.getLeft(n)
+		const right = this.getRight(n)
+		n.count = 1 + (left ? left.count : 0) + (right ? right.count : 0)
 	}
 
 	// Returns the number of nodes in the tree
@@ -366,45 +261,47 @@ export class RedBlackTree<K, V> {
 		let cmp = this.compare
 		// Find point to insert new node at
 		let n = this.getRoot()
-		let n_stack: Array<RBNode<K, V>> = []
+		let n_stack: Array<RBNodeData<K, V>> = []
 		let d_stack: Array<number> = []
 		while (n) {
 			let d = cmp(key, n.key)
 			n_stack.push(n)
 			d_stack.push(d)
 			if (d <= 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		//Rebuild path to leaf node
-		const newNode = new RBNode(
-			{
-				id: randomId(),
-				color: RED,
-				key,
-				value,
-				leftId: undefined,
-				rightId: undefined,
-				count: 1,
-			},
-			this.store
-		)
-		newNode.save()
+		const newNode: RBNodeData<K, V> = {
+			id: randomId(),
+			color: RED,
+			key,
+			value,
+			leftId: undefined,
+			rightId: undefined,
+			count: 1,
+		}
+		// newNode.save()
 		n_stack.push(newNode)
+
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
 			if (d_stack[s] <= 0) {
-				n_stack[s] = n.clone({
+				n_stack[s] = {
+					...n,
+					id: randomId(),
 					leftId: n_stack[s + 1] ? n_stack[s + 1].id : undefined,
 					count: n.count + 1,
-				})
+				}
 			} else {
-				n_stack[s] = n.clone({
+				n_stack[s] = {
+					...n,
+					id: randomId(),
 					rightId: n_stack[s + 1] ? n_stack[s + 1].id : undefined,
 					count: n.count + 1,
-				})
+				}
 			}
 		}
 
@@ -421,7 +318,7 @@ export class RedBlackTree<K, V> {
 			let pp = n_stack[s - 2]
 			if (pp.leftId === p.id) {
 				if (p.leftId === n.id) {
-					let y = pp.getRight()
+					let y = this.getRight(pp)
 					if (y && y.color === RED) {
 						//
 						//      (pp)
@@ -432,57 +329,73 @@ export class RedBlackTree<K, V> {
 						//
 
 						//console.log("LLr")
-						p.setColor(BLACK)
-						pp.setRight(y.repaint(BLACK))
-						pp.setColor(RED)
+						p.color = BLACK
+
+						const newUncle: RBNodeData<K, V> = {
+							...y,
+							id: randomId(),
+							color: BLACK,
+						}
+						this.store.set(newUncle.id, newUncle)
+						pp.rightId = newUncle.id
+
+						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("LLb")
-						pp.setColor(RED)
-						pp.setLeft(p.getRight())
-						p.setColor(BLACK)
-						p.setRight(pp)
+						pp.color = RED
+						pp.leftId = p.rightId
+						p.color = BLACK
+						p.rightId = pp.id
 						n_stack[s - 2] = p
 						n_stack[s - 1] = n
-						recount(pp)
-						recount(p)
+						this.recount(pp)
+						this.recount(p)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.leftId === pp.id) {
-								ppp.setLeft(p)
+								ppp.leftId = p.id
 							} else {
-								ppp.setRight(p)
+								ppp.rightId = p.id
 							}
 						}
 						break
 					}
 				} else {
-					let y = pp.getRight()
+					let y = this.getRight(pp)
 					if (y && y.color === RED) {
 						//console.log("LRr")
-						p.setColor(BLACK)
-						pp.setRight(y.repaint(BLACK))
-						pp.setColor(RED)
+						p.color = BLACK
+
+						const newUncle: RBNodeData<K, V> = {
+							...y,
+							id: randomId(),
+							color: BLACK,
+						}
+						this.store.set(newUncle.id, newUncle)
+						pp.rightId = newUncle.id
+
+						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("LRb")
-						p.setRight(n.getLeft())
-						pp.setColor(RED)
-						pp.setLeft(n.getRight())
-						n.setColor(BLACK)
-						n.setLeft(p)
-						n.setRight(pp)
+						p.rightId = n.leftId
+						pp.color = RED
+						pp.leftId = n.rightId
+						n.color = BLACK
+						n.leftId = p.id
+						n.rightId = pp.id
 						n_stack[s - 2] = n
 						n_stack[s - 1] = p
-						recount(pp)
-						recount(p)
-						recount(n)
+						this.recount(pp)
+						this.recount(p)
+						this.recount(n)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.leftId === pp.id) {
-								ppp.setLeft(n)
+								ppp.leftId = n.id
 							} else {
-								ppp.setRight(n)
+								ppp.rightId = n.id
 							}
 						}
 						break
@@ -490,60 +403,76 @@ export class RedBlackTree<K, V> {
 				}
 			} else {
 				if (p.rightId === n.id) {
-					let y = pp.getLeft()
+					let y = this.getLeft(pp)
 					if (y && y.color === RED) {
 						//console.log("RRr", y.key)
-						p.setColor(BLACK)
-						pp.setLeft(y.repaint(BLACK))
-						pp.setColor(RED)
+						p.color = BLACK
+
+						const newUncle: RBNodeData<K, V> = {
+							...y,
+							id: randomId(),
+							color: BLACK,
+						}
+						this.store.set(newUncle.id, newUncle)
+						pp.leftId = newUncle.id
+
+						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("RRb")
-						pp.setColor(RED)
-						pp.setRight(p.getLeft())
-						p.setColor(BLACK)
-						p.setLeft(pp)
+						pp.color = RED
+						pp.rightId = p.leftId
+						p.color = BLACK
+						p.leftId = pp.id
 						n_stack[s - 2] = p
 						n_stack[s - 1] = n
-						recount(pp)
-						recount(p)
+						this.recount(pp)
+						this.recount(p)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.rightId === pp.id) {
-								ppp.setRight(p)
+								ppp.rightId = p.id
 							} else {
-								ppp.setLeft(p)
+								ppp.leftId = p.id
 							}
 						}
 						break
 					}
 				} else {
-					let y = pp.getLeft()
+					let y = this.getLeft(pp)
 					if (y && y.color === RED) {
 						//console.log("RLr")
-						p.setColor(BLACK)
-						pp.setLeft(y.repaint(BLACK))
-						pp.setColor(RED)
+						p.color = BLACK
+
+						const newUncle: RBNodeData<K, V> = {
+							...y,
+							id: randomId(),
+							color: BLACK,
+						}
+						this.store.set(newUncle.id, newUncle)
+						pp.leftId = newUncle.id
+
+						pp.color = RED
 						s -= 1
 					} else {
 						//console.log("RLb")
-						p.setLeft(n.getRight())
-						pp.setColor(RED)
-						pp.setRight(n.getLeft())
-						n.setColor(BLACK)
-						n.setRight(p)
-						n.setLeft(pp)
+						p.leftId = n.rightId
+						pp.color = RED
+						pp.rightId = n.leftId
+						n.color = BLACK
+						n.rightId = p.id
+						n.leftId = pp.id
 						n_stack[s - 2] = n
 						n_stack[s - 1] = p
-						recount(pp)
-						recount(p)
-						recount(n)
+						this.recount(pp)
+						this.recount(p)
+						this.recount(n)
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.rightId === pp.id) {
-								ppp.setRight(n)
+								ppp.rightId = n.id
 							} else {
-								ppp.setLeft(n)
+								ppp.leftId = n.id
 							}
 						}
 						break
@@ -552,7 +481,13 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		//Return new tree
-		n_stack[0].setColor(BLACK)
+		n_stack[0].color = BLACK
+
+		// Save the whole stack
+		for (const node of n_stack) {
+			this.store.set(node.id, node)
+		}
+
 		return new RedBlackTree({ compare: cmp, rootId: n_stack[0].id }, this.store)
 	}
 
@@ -566,33 +501,116 @@ export class RedBlackTree<K, V> {
 				if (this.compare(lo, hi) >= 0) {
 					return
 				}
-				return doVisit(lo, hi, this.compare, fn, root)
+				return this.doVisit(lo, hi, this.compare, fn, root)
 			} else {
-				return doVisitHalf(lo, this.compare, fn, root)
+				return this.doVisitHalf(lo, this.compare, fn, root)
 			}
 		} else {
-			return doVisitFull(fn, root)
+			return this.doVisitFull(fn, root)
+		}
+	}
+
+	//Visit all nodes within a range
+	doVisit<T>(
+		lo: K,
+		hi: K,
+		compare: (a: K, b: K) => number,
+		fn: (key: K, value: V) => T,
+		node: RBNodeData<K, V>
+	): T | undefined {
+		let l = compare(lo, node.key)
+		let h = compare(hi, node.key)
+		let v
+		if (l <= 0) {
+			const left = this.getLeft(node)
+			if (left) {
+				v = this.doVisit(lo, hi, compare, fn, left)
+				if (v) {
+					return v
+				}
+			}
+			if (h > 0) {
+				v = fn(node.key, node.value)
+				if (v) {
+					return v
+				}
+			}
+		}
+		if (h > 0) {
+			const right = this.getRight(node)
+			if (right) {
+				return this.doVisit(lo, hi, compare, fn, right)
+			}
+		}
+	}
+
+	// Visit all nodes inorder
+	doVisitFull<T>(
+		fn: (key: K, value: V) => T,
+		node: RBNodeData<K, V>
+	): T | undefined {
+		const left = this.getLeft(node)
+		if (left) {
+			let v = this.doVisitFull(fn, left)
+			if (v) {
+				return v
+			}
+		}
+		let v = fn(node.key, node.value)
+		if (v) {
+			return v
+		}
+		const right = this.getRight(node)
+		if (right) {
+			return this.doVisitFull(fn, right)
+		}
+	}
+
+	// Visit half nodes in order
+	doVisitHalf<T>(
+		lo: K,
+		compare: (a: K, b: K) => number,
+		fn: (key: K, value: V) => T,
+		node: RBNodeData<K, V>
+	): T | undefined {
+		let l = compare(lo, node.key)
+		if (l <= 0) {
+			const left = this.getLeft(node)
+			if (left) {
+				let v = this.doVisitHalf(lo, compare, fn, left)
+				if (v) {
+					return v
+				}
+			}
+			let v = fn(node.key, node.value)
+			if (v) {
+				return v
+			}
+		}
+		const right = this.getRight(node)
+		if (right) {
+			return this.doVisitHalf(lo, compare, fn, right)
 		}
 	}
 
 	//First item in list
 	get begin(): RedBlackTreeIterator<K, V> {
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		let n = this.getRoot()
 		while (n) {
 			stack.push(n)
-			n = n.getLeft()
+			n = this.getLeft(n)
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
 	}
 
 	//Last item in list
 	get end(): RedBlackTreeIterator<K, V> {
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		let n = this.getRoot()
 		while (n) {
 			stack.push(n)
-			n = n.getRight()
+			n = this.getRight(n)
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
 	}
@@ -604,10 +622,10 @@ export class RedBlackTree<K, V> {
 			return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
 		}
 		let n = root
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		while (true) {
 			stack.push(n)
-			const left = n.getLeft()
+			const left = this.getLeft(n)
 			if (left) {
 				if (idx < left.count) {
 					n = left
@@ -622,7 +640,7 @@ export class RedBlackTree<K, V> {
 				)
 			}
 			idx -= 1
-			const right = n.getRight()
+			const right = this.getRight(n)
 			if (right) {
 				if (idx >= right.count) {
 					break
@@ -638,7 +656,7 @@ export class RedBlackTree<K, V> {
 	ge(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -647,9 +665,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d <= 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		stack.length = last_ptr
@@ -659,7 +677,7 @@ export class RedBlackTree<K, V> {
 	gt(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -668,9 +686,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d < 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		stack.length = last_ptr
@@ -680,7 +698,7 @@ export class RedBlackTree<K, V> {
 	lt(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -689,9 +707,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d <= 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		stack.length = last_ptr
@@ -701,7 +719,7 @@ export class RedBlackTree<K, V> {
 	le(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -710,9 +728,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d < 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		stack.length = last_ptr
@@ -723,7 +741,7 @@ export class RedBlackTree<K, V> {
 	find(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<RBNodeData<K, V>> = []
 		while (n) {
 			let d = cmp(key, n.key)
 			stack.push(n)
@@ -731,9 +749,9 @@ export class RedBlackTree<K, V> {
 				return new RedBlackTreeIterator({ tree: this, stack }, this.store)
 			}
 			if (d <= 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
@@ -758,105 +776,22 @@ export class RedBlackTree<K, V> {
 				return n.value
 			}
 			if (d <= 0) {
-				n = n.getLeft()
+				n = this.getLeft(n)
 			} else {
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		}
 		return
 	}
 }
 
-// Visit all nodes inorder
-function doVisitFull<K, V, T>(
-	fn: (key: K, value: V) => T,
-	node: RBNode<K, V>
-): T | undefined {
-	const left = node.getLeft()
-	if (left) {
-		let v = doVisitFull(fn, left)
-		if (v) {
-			return v
-		}
-	}
-	let v = fn(node.key, node.value)
-	if (v) {
-		return v
-	}
-	const right = node.getRight()
-	if (right) {
-		return doVisitFull(fn, right)
-	}
-}
-
-// Visit half nodes in order
-function doVisitHalf<K, V, T>(
-	lo: K,
-	compare: (a: K, b: K) => number,
-	fn: (key: K, value: V) => T,
-	node: RBNode<K, V>
-): T | undefined {
-	let l = compare(lo, node.key)
-	if (l <= 0) {
-		const left = node.getLeft()
-		if (left) {
-			let v = doVisitHalf(lo, compare, fn, left)
-			if (v) {
-				return v
-			}
-		}
-		let v = fn(node.key, node.value)
-		if (v) {
-			return v
-		}
-	}
-	const right = node.getRight()
-	if (right) {
-		return doVisitHalf(lo, compare, fn, right)
-	}
-}
-
-//Visit all nodes within a range
-function doVisit<K, V, T>(
-	lo: K,
-	hi: K,
-	compare: (a: K, b: K) => number,
-	fn: (key: K, value: V) => T,
-	node: RBNode<K, V>
-): T | undefined {
-	let l = compare(lo, node.key)
-	let h = compare(hi, node.key)
-	let v
-	if (l <= 0) {
-		const left = node.getLeft()
-		if (left) {
-			v = doVisit(lo, hi, compare, fn, left)
-			if (v) {
-				return v
-			}
-		}
-		if (h > 0) {
-			v = fn(node.key, node.value)
-			if (v) {
-				return v
-			}
-		}
-	}
-	if (h > 0) {
-		const right = node.getRight()
-		if (right) {
-			return doVisit(lo, hi, compare, fn, right)
-		}
-	}
-}
-
 //Iterator for red black tree
 export class RedBlackTreeIterator<K, V> {
 	public tree: RedBlackTree<K, V>
-	public stack: Array<RBNode<K, V>>
+	public stack: Array<RBNodeData<K, V>>
 
 	constructor(
-		args: { tree: RedBlackTree<K, V>; stack: Array<RBNode<K, V>> },
+		args: { tree: RedBlackTree<K, V>; stack: Array<RBNodeData<K, V>> },
 		private store: KeyValueStore<string, RBNodeData<K, V>>
 	) {
 		this.tree = args.tree
@@ -888,6 +823,24 @@ export class RedBlackTreeIterator<K, V> {
 		)
 	}
 
+	getLeft(n: RBNodeData<K, V>): RBNodeData<K, V> | undefined {
+		if (n.leftId) {
+			return this.store.get(n.leftId)
+		}
+	}
+
+	getRight(n: RBNodeData<K, V>): RBNodeData<K, V> | undefined {
+		if (n.rightId) {
+			return this.store.get(n.rightId)
+		}
+	}
+
+	recount(n: RBNodeData<K, V>) {
+		const left = this.getLeft(n)
+		const right = this.getRight(n)
+		n.count = 1 + (left ? left.count : 0) + (right ? right.count : 0)
+	}
+
 	//Removes item at iterator from tree
 	remove(): RedBlackTree<K, V> {
 		let stack = this.stack
@@ -895,19 +848,26 @@ export class RedBlackTreeIterator<K, V> {
 			return this.tree
 		}
 		//First copy path to node
-		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
+		let cstack: Array<RBNodeData<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = n.clone()
+		cstack[cstack.length - 1] = {
+			...n,
+			id: randomId(),
+		}
 		for (let i = stack.length - 2; i >= 0; --i) {
 			let n = stack[i]
 			if (n.leftId === stack[i + 1].id) {
-				cstack[i] = n.clone({
+				cstack[i] = {
+					...n,
+					id: randomId(),
 					leftId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				}
 			} else {
-				cstack[i] = n.clone({
+				cstack[i] = {
+					...n,
+					id: randomId(),
 					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				}
 			}
 		}
 
@@ -916,32 +876,34 @@ export class RedBlackTreeIterator<K, V> {
 		//console.log("start remove: ", n.value)
 
 		//If not leaf, then swap with previous node
-		const left = n.getLeft()
-		let right = n.getRight()
+		const left = this.getLeft(n)
+		let right = this.getRight(n)
 		if (left && right) {
 			//console.log("moving to leaf")
 
 			//First walk to previous leaf
 			let split = cstack.length
 			n = left
-			while ((right = n.getRight())) {
+			while ((right = this.getRight(n))) {
 				cstack.push(n)
 				n = right
 			}
 			//Copy path to leaf
 			let v = cstack[split - 1]
-			cstack.push(n.clone())
-			cstack[split - 1].setKey(n.key)
-			cstack[split - 1].setValue(n.value)
+			cstack.push({ ...n, id: randomId() })
+			cstack[split - 1].key = n.key
+			cstack[split - 1].value = n.value
 
 			//Fix up stack
 			for (let i = cstack.length - 2; i >= split; --i) {
 				n = cstack[i]
-				cstack[i] = n.clone({
+				cstack[i] = {
+					...n,
+					id: randomId(),
 					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				}
 			}
-			cstack[split - 1].setLeft(cstack[split])
+			cstack[split - 1].leftId = cstack[split].id
 		}
 		//console.log("stack=", cstack.map(function(v) { return v.value }))
 
@@ -952,18 +914,21 @@ export class RedBlackTreeIterator<K, V> {
 			//console.log("RED leaf")
 			let p = cstack[cstack.length - 2]
 			if (p.leftId === n.id) {
-				p.setLeft(undefined)
+				p.leftId = undefined
 			} else if (p.rightId === n.id) {
-				p.setRight(undefined)
+				p.rightId = undefined
 			}
 			cstack.pop()
 			for (let i = 0; i < cstack.length; ++i) {
-				cstack[i].setCount(cstack[i].count - 1)
+				cstack[i].count = cstack[i].count - 1
+			}
+			for (const node of cstack) {
+				this.store.set(node.id, node)
 			}
 			return this.tree.clone(cstack[0].id)
 		} else {
-			const left = n.getLeft()
-			const right = n.getRight()
+			const left = this.getLeft(n)
+			const right = this.getRight(n)
 			if (left || right) {
 				//Second easy case:  Single child black parent
 				//console.log("BLACK single child")
@@ -973,32 +938,278 @@ export class RedBlackTreeIterator<K, V> {
 					swapNode(n, right)
 				}
 				//Child must be red, so repaint it black to balance color
-				n.setColor(BLACK)
+				n.color = BLACK
 				for (let i = 0; i < cstack.length - 1; ++i) {
-					cstack[i].setCount(cstack[i].count - 1)
+					cstack[i].count = cstack[i].count - 1
+				}
+				for (const node of cstack) {
+					this.store.set(node.id, node)
 				}
 				return this.tree.clone(cstack[0].id)
 			} else if (cstack.length === 1) {
 				//Third easy case: root
 				//console.log("ROOT")
+				for (const node of cstack) {
+					this.store.set(node.id, node)
+				}
 				return this.tree.clone(undefined)
 			} else {
 				//Hard case: Repaint n, and then do some nasty stuff
 				//console.log("BLACK leaf no children")
 				for (let i = 0; i < cstack.length; ++i) {
-					cstack[i].setCount(cstack[i].count - 1)
+					cstack[i].count = cstack[i].count - 1
 				}
 				let parent = cstack[cstack.length - 2]
-				fixDoubleBlack(cstack)
+				this.fixDoubleBlack(cstack)
 				//Fix up links
 				if (parent.leftId === n.id) {
-					parent.setLeft(undefined)
+					parent.leftId = undefined
 				} else {
-					parent.setRight(undefined)
+					parent.rightId = undefined
 				}
 			}
 		}
+		for (const node of cstack) {
+			this.store.set(node.id, node)
+		}
 		return this.tree.clone(cstack[0].id)
+	}
+
+	//Fix up a double black node in a tree
+	fixDoubleBlack(stack: Array<RBNodeData<K, V>>) {
+		for (let i = stack.length - 1; i >= 0; --i) {
+			let n = stack[i]
+			if (i === 0) {
+				n.color = BLACK
+				return
+			}
+			//console.log("visit node:", n.key, i, stack[i].key, stack[i-1].key)
+			let p = stack[i - 1]
+			if (p.leftId === n.id) {
+				//console.log("left child")
+				let s = this.getRight(p)
+				if (!s) {
+					throw new Error("This cannot happen")
+				}
+				const right = this.getRight(s)
+				if (right && right.color === RED) {
+					//console.log("case 1: right sibling child red")
+					s = { ...s, id: randomId() }
+					p.rightId = s.id
+					let z = { ...right, id: randomId() }
+					s.rightId = z.id
+					p.rightId = s.leftId
+					s.leftId = p.id
+					s.rightId = z.id
+					s.color = p.color
+					n.color = BLACK
+					p.color = BLACK
+					z.color = BLACK
+					this.recount(p)
+					this.recount(s)
+
+					this.store.set(z.id, z)
+
+					if (i > 1) {
+						let pp = stack[i - 2]
+						if (pp.leftId === p.id) {
+							pp.leftId = s.id
+						} else {
+							pp.rightId = s.id
+						}
+					}
+					stack[i - 1] = s
+					return
+				} else {
+					const left = this.getLeft(s)
+					if (left && left.color === RED) {
+						//console.log("case 1: left sibling child red")
+						s = { ...s, id: randomId() }
+						p.rightId = s.id
+						let z = { ...left, id: randomId() }
+						s.leftId = z.id
+						p.rightId = z.leftId
+						s.leftId = z.rightId
+						z.leftId = p.id
+						z.rightId = s.id
+						z.color = p.color
+						p.color = BLACK
+						s.color = BLACK
+						n.color = BLACK
+						this.recount(p)
+						this.recount(s)
+						this.recount(z)
+						this.store.set(z.id, z)
+						if (i > 1) {
+							let pp = stack[i - 2]
+							if (pp.leftId === p.id) {
+								pp.leftId = z.id
+							} else {
+								pp.rightId = z.id
+							}
+						}
+						stack[i - 1] = z
+						return
+					}
+				}
+				if (s.color === BLACK) {
+					if (p.color === RED) {
+						//console.log("case 2: black sibling, red parent", p.right.value)
+						p.color = BLACK
+						const newS: RBNodeData<K, V> = {
+							...s,
+							id: randomId(),
+							color: RED,
+						}
+						this.store.set(newS.id, newS)
+						// TODO: save newS?
+						p.rightId = newS.id
+						return
+					} else {
+						//console.log("case 2: black sibling, black parent", p.right.value)
+						const newS: RBNodeData<K, V> = {
+							...s,
+							id: randomId(),
+							color: RED,
+						}
+						this.store.set(newS.id, newS)
+						p.rightId = newS.id
+						continue
+					}
+				} else {
+					//console.log("case 3: red sibling")
+					s = { ...s, id: randomId() }
+					p.rightId = s.leftId
+					s.leftId = p.id
+					s.color = p.color
+					p.color = RED
+					this.recount(p)
+					this.recount(s)
+					if (i > 1) {
+						let pp = stack[i - 2]
+						if (pp.leftId === p.id) {
+							pp.leftId = s.id
+						} else {
+							pp.rightId = s.id
+						}
+					}
+					stack[i - 1] = s
+					stack[i] = p
+					if (i + 1 < stack.length) {
+						stack[i + 1] = n
+					} else {
+						stack.push(n)
+					}
+					i = i + 2
+				}
+			} else {
+				//console.log("right child")
+				let s = this.getLeft(p)
+				if (!s) {
+					throw new Error("This cannot happen")
+				}
+				const left = this.getLeft(s)
+				if (left && left.color === RED) {
+					//console.log("case 1: left sibling child red", p.value, p._color)
+					s = { ...s, id: randomId() }
+					p.leftId = s.id
+					let z = { ...left, id: randomId() }
+					s.leftId = z.id
+					p.leftId = s.rightId
+					s.rightId = p.id
+					s.leftId = z.id
+					s.color = p.color
+					n.color = BLACK
+					p.color = BLACK
+					z.color = BLACK
+					this.recount(p)
+					this.recount(s)
+					this.store.set(z.id, z)
+					if (i > 1) {
+						let pp = stack[i - 2]
+						if (pp.rightId === p.id) {
+							pp.rightId = s.id
+						} else {
+							pp.leftId = s.id
+						}
+					}
+					stack[i - 1] = s
+					return
+				} else {
+					const right = this.getRight(s)
+					if (right && right.color === RED) {
+						//console.log("case 1: right sibling child red")
+						s = { ...s, id: randomId() }
+						p.leftId = s.id
+						let z = { ...right, id: randomId() }
+						s.rightId = z.id
+						p.leftId = z.rightId
+						s.rightId = z.leftId
+						z.rightId = p.id
+						z.leftId = s.id
+						z.color = p.color
+						p.color = BLACK
+						s.color = BLACK
+						n.color = BLACK
+						this.recount(p)
+						this.recount(s)
+						this.recount(z)
+						this.store.set(z.id, z)
+						if (i > 1) {
+							let pp = stack[i - 2]
+							if (pp.rightId === p.id) {
+								pp.rightId = z.id
+							} else {
+								pp.leftId = z.id
+							}
+						}
+						stack[i - 1] = z
+						return
+					}
+				}
+				if (s.color === BLACK) {
+					if (p.color === RED) {
+						//console.log("case 2: black sibling, red parent")
+						p.color = BLACK
+						const newS: RBNodeData<K, V> = { ...s, id: randomId(), color: RED }
+						this.store.set(newS.id, newS)
+						p.leftId = newS.id
+						return
+					} else {
+						//console.log("case 2: black sibling, black parent")
+						const newS: RBNodeData<K, V> = { ...s, id: randomId(), color: RED }
+						this.store.set(newS.id, newS)
+						p.leftId = newS.id
+						continue
+					}
+				} else {
+					//console.log("case 3: red sibling")
+					s = { ...s, id: randomId() }
+					p.leftId = s.rightId
+					s.rightId = p.id
+					s.color = p.color
+					p.color = RED
+					this.recount(p)
+					this.recount(s)
+					if (i > 1) {
+						let pp = stack[i - 2]
+						if (pp.rightId === p.id) {
+							pp.rightId = s.id
+						} else {
+							pp.leftId = s.id
+						}
+					}
+					stack[i - 1] = s
+					stack[i] = p
+					if (i + 1 < stack.length) {
+						stack[i + 1] = n
+					} else {
+						stack.push(n)
+					}
+					i = i + 2
+				}
+			}
+		}
 	}
 
 	//Returns key
@@ -1028,7 +1239,7 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			return 0
 		} else {
-			const left = stack[stack.length - 1].getLeft()
+			const left = this.getLeft(stack[stack.length - 1])
 			if (left) {
 				idx = left.count
 			}
@@ -1036,7 +1247,7 @@ export class RedBlackTreeIterator<K, V> {
 		for (let s = stack.length - 2; s >= 0; --s) {
 			if (stack[s + 1].id === stack[s].rightId) {
 				++idx
-				const left = stack[s].getLeft()
+				const left = this.getLeft(stack[s])
 				if (left) {
 					idx += left.count
 				}
@@ -1051,13 +1262,13 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return
 		}
-		let n: RBNode<K, V> | undefined = stack[stack.length - 1]
-		const right = n.getRight()
+		let n: RBNodeData<K, V> | undefined = stack[stack.length - 1]
+		const right = this.getRight(n)
 		if (right) {
 			n = right
 			while (n) {
 				stack.push(n)
-				n = n.getLeft()
+				n = this.getLeft(n)
 			}
 		} else {
 			stack.pop()
@@ -1074,7 +1285,7 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return false
 		}
-		if (stack[stack.length - 1].getRight()) {
+		if (this.getRight(stack[stack.length - 1])) {
 			return true
 		}
 		for (let s = stack.length - 1; s > 0; --s) {
@@ -1091,7 +1302,7 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return false
 		}
-		if (stack[stack.length - 1].getLeft()) {
+		if (this.getLeft(stack[stack.length - 1])) {
 			return true
 		}
 		for (let s = stack.length - 1; s > 0; --s) {
@@ -1108,22 +1319,31 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			throw new Error("Can't update empty node!")
 		}
-		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
+		let cstack: Array<RBNodeData<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = n.clone({
+		cstack[cstack.length - 1] = {
+			...n,
+			id: randomId(),
 			value,
-		})
+		}
 		for (let i = stack.length - 2; i >= 0; --i) {
 			n = stack[i]
 			if (n.leftId === stack[i + 1].id) {
-				cstack[i] = n.clone({
+				cstack[i] = {
+					...n,
+					id: randomId(),
 					leftId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				}
 			} else {
-				cstack[i] = n.clone({
+				cstack[i] = {
+					...n,
+					id: randomId(),
 					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				}
 			}
+		}
+		for (const node of cstack) {
+			this.store.set(node.id, node)
 		}
 		return this.tree.clone(cstack[0].id)
 	}
@@ -1134,13 +1354,13 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return
 		}
-		let n: RBNode<K, V> | undefined = stack[stack.length - 1]
-		const left = n.getLeft()
+		let n: RBNodeData<K, V> | undefined = stack[stack.length - 1]
+		const left = this.getLeft(n)
 		if (left) {
 			n = left
 			while (n) {
 				stack.push(n)
-				n = n.getRight()
+				n = this.getRight(n)
 			}
 		} else {
 			stack.pop()
@@ -1153,227 +1373,13 @@ export class RedBlackTreeIterator<K, V> {
 }
 
 //Swaps two nodes
-function swapNode<K, V>(n: RBNode<K, V>, v: RBNode<K, V>) {
-	n.setKey(v.key)
-	n.setValue(v.value)
-	n.setLeft(v.getLeft())
-	n.setRight(v.getRight())
-	n.setColor(v.color)
-	n.setCount(v.count)
-}
-
-//Fix up a double black node in a tree
-function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
-	for (let i = stack.length - 1; i >= 0; --i) {
-		let n = stack[i]
-		if (i === 0) {
-			n.setColor(BLACK)
-			return
-		}
-		//console.log("visit node:", n.key, i, stack[i].key, stack[i-1].key)
-		let p = stack[i - 1]
-		if (p.leftId === n.id) {
-			//console.log("left child")
-			let s = p.getRight()
-			if (!s) {
-				throw new Error("This cannot happen")
-			}
-			const right = s.getRight()
-			if (right && right.color === RED) {
-				//console.log("case 1: right sibling child red")
-				s = s.clone()
-				p.setRight(s)
-				let z = right.clone()
-				s.setRight(z)
-				p.setRight(s.getLeft())
-				s.setLeft(p)
-				s.setRight(z)
-				s.setColor(p.color)
-				n.setColor(BLACK)
-				p.setColor(BLACK)
-				z.setColor(BLACK)
-				recount(p)
-				recount(s)
-				if (i > 1) {
-					let pp = stack[i - 2]
-					if (pp.leftId === p.id) {
-						pp.setLeft(s)
-					} else {
-						pp.setRight(s)
-					}
-				}
-				stack[i - 1] = s
-				return
-			} else {
-				const left = s.getLeft()
-				if (left && left.color === RED) {
-					//console.log("case 1: left sibling child red")
-					s = s.clone()
-					p.setRight(s)
-					let z = left.clone()
-					s.setLeft(z)
-					p.setRight(z.getLeft())
-					s.setLeft(z.getRight())
-					z.setLeft(p)
-					z.setRight(s)
-					z.setColor(p.color)
-					p.setColor(BLACK)
-					s.setColor(BLACK)
-					n.setColor(BLACK)
-					recount(p)
-					recount(s)
-					recount(z)
-					if (i > 1) {
-						let pp = stack[i - 2]
-						if (pp.leftId === p.id) {
-							pp.setLeft(z)
-						} else {
-							pp.setRight(z)
-						}
-					}
-					stack[i - 1] = z
-					return
-				}
-			}
-			if (s.color === BLACK) {
-				if (p.color === RED) {
-					//console.log("case 2: black sibling, red parent", p.right.value)
-					p.setColor(BLACK)
-					p.setRight(s.repaint(RED))
-					return
-				} else {
-					//console.log("case 2: black sibling, black parent", p.right.value)
-					p.setRight(s.repaint(RED))
-					continue
-				}
-			} else {
-				//console.log("case 3: red sibling")
-				s = s.clone()
-				p.setRight(s.getLeft())
-				s.setLeft(p)
-				s.setColor(p.color)
-				p.setColor(RED)
-				recount(p)
-				recount(s)
-				if (i > 1) {
-					let pp = stack[i - 2]
-					if (pp.leftId === p.id) {
-						pp.setLeft(s)
-					} else {
-						pp.setRight(s)
-					}
-				}
-				stack[i - 1] = s
-				stack[i] = p
-				if (i + 1 < stack.length) {
-					stack[i + 1] = n
-				} else {
-					stack.push(n)
-				}
-				i = i + 2
-			}
-		} else {
-			//console.log("right child")
-			let s = p.getLeft()
-			if (!s) {
-				throw new Error("This cannot happen")
-			}
-			const left = s.getLeft()
-			if (left && left.color === RED) {
-				//console.log("case 1: left sibling child red", p.value, p._color)
-				s = s.clone()
-				p.setLeft(s)
-				let z = left.clone()
-				s.setLeft(z)
-				p.setLeft(s.getRight())
-				s.setRight(p)
-				s.setLeft(z)
-				s.setColor(p.color)
-				n.setColor(BLACK)
-				p.setColor(BLACK)
-				z.setColor(BLACK)
-				recount(p)
-				recount(s)
-				if (i > 1) {
-					let pp = stack[i - 2]
-					if (pp.rightId === p.id) {
-						pp.setRight(s)
-					} else {
-						pp.setLeft(s)
-					}
-				}
-				stack[i - 1] = s
-				return
-			} else {
-				const right = s.getRight()
-				if (right && right.color === RED) {
-					//console.log("case 1: right sibling child red")
-					s = s.clone()
-					p.setLeft(s)
-					let z = right.clone()
-					s.setRight(z)
-					p.setLeft(z.getRight())
-					s.setRight(z.getLeft())
-					z.setRight(p)
-					z.setLeft(s)
-					z.setColor(p.color)
-					p.setColor(BLACK)
-					s.setColor(BLACK)
-					n.setColor(BLACK)
-					recount(p)
-					recount(s)
-					recount(z)
-					if (i > 1) {
-						let pp = stack[i - 2]
-						if (pp.rightId === p.id) {
-							pp.setRight(z)
-						} else {
-							pp.setLeft(z)
-						}
-					}
-					stack[i - 1] = z
-					return
-				}
-			}
-			if (s.color === BLACK) {
-				if (p.color === RED) {
-					//console.log("case 2: black sibling, red parent")
-					p.setColor(BLACK)
-					p.setLeft(s.repaint(RED))
-					return
-				} else {
-					//console.log("case 2: black sibling, black parent")
-					p.setLeft(s.repaint(RED))
-					continue
-				}
-			} else {
-				//console.log("case 3: red sibling")
-				s = s.clone()
-				p.setLeft(s.getRight())
-				s.setRight(p)
-				s.setColor(p.color)
-				p.setColor(RED)
-				recount(p)
-				recount(s)
-				if (i > 1) {
-					let pp = stack[i - 2]
-					if (pp.rightId === p.id) {
-						pp.setRight(s)
-					} else {
-						pp.setLeft(s)
-					}
-				}
-				stack[i - 1] = s
-				stack[i] = p
-				if (i + 1 < stack.length) {
-					stack[i + 1] = n
-				} else {
-					stack.push(n)
-				}
-				i = i + 2
-			}
-		}
-	}
+function swapNode<K, V>(n: RBNodeData<K, V>, v: RBNodeData<K, V>) {
+	n.key = v.key
+	n.value = v.value
+	n.leftId = v.leftId
+	n.rightId = v.rightId
+	n.color = v.color
+	n.count = v.count
 }
 
 //Default comparison function
