@@ -1,6 +1,6 @@
 import makeTree, {
 	RedBlackTree,
-	RBNode,
+	ReadOnlyNode,
 	RedBlackTreeIterator,
 } from "../src/rbtree"
 import * as tape from "tape"
@@ -9,7 +9,7 @@ const iota = require("iota-array") as (n: number) => Array<number>
 
 var COLORS = ["r", "b", "bb"]
 
-function printTree<K, V>(tree: RBNode<K, V> | undefined): any {
+function printTree<K, V>(tree: ReadOnlyNode<K, V> | undefined): any {
 	if (!tree) {
 		return []
 	}
@@ -32,7 +32,7 @@ function checkTree<K, V>(tree: RedBlackTree<K, V>, t: tape.Test) {
 		return
 	}
 	t.equals(root.color, 1, "root is black")
-	function checkNode(node: RBNode<K, V> | undefined): [number, number] {
+	function checkNode(node: ReadOnlyNode<K, V> | undefined): [number, number] {
 		if (!node) {
 			return [1, 0]
 		}

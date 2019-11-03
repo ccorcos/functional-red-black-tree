@@ -44,6 +44,27 @@ class RBNodeDataStore<K, V> {
 	}
 }
 
+class RBNodeTransaction<K, V> {
+	constructor(private store: RBNodeDataStore<K, V>) {}
+	private writes: Record<string, RBNodeData<K, V>> = {}
+	get(id: string): RBNodeData<K, V> | undefined {
+		if (id in this.writes) {
+			return this.writes[id]
+		} else {
+			return this.store.get(id)
+		}
+	}
+	set(value: RBNodeData<K, V>): void {
+		this.writes[value.id] = value
+	}
+	commit() {
+		for (const node of Object.values(this.writes)) {
+			this.store.set(node)
+		}
+		this.writes = {}
+	}
+}
+
 function randomId() {
 	return Math.round(Math.random() * 1e10).toString()
 }
@@ -61,10 +82,73 @@ interface RBNodeData<K, V> {
 	readonly count: number
 }
 
-export class RBNode<K, V> {
+export class ReadOnlyNode<K, V> {
 	constructor(
 		public readonly id: string,
 		private store: RBNodeDataStore<K, V>
+	) {}
+
+	private get() {
+		const result = this.store.get(this.id)
+		if (!result) {
+			throw new Error("This shouldn't happen")
+		}
+		return result
+	}
+
+	get color() {
+		return this.get().color
+	}
+
+	get key() {
+		return this.get().key
+	}
+
+	get value() {
+		return this.get().value
+	}
+
+	get count() {
+		return this.get().count
+	}
+
+	get leftId() {
+		return this.get().leftId
+	}
+
+	get rightId() {
+		return this.get().rightId
+	}
+
+	getLeft(): ReadOnlyNode<K, V> | undefined {
+		const leftId = this.get().leftId
+		if (leftId) {
+			const args = this.store.get(leftId)
+			if (args) {
+				return new ReadOnlyNode(leftId, this.store)
+			}
+		}
+	}
+
+	getRight(): ReadOnlyNode<K, V> | undefined {
+		const rightId = this.get().rightId
+		if (rightId) {
+			const args = this.store.get(rightId)
+			if (args) {
+				return new ReadOnlyNode(rightId, this.store)
+			}
+		}
+	}
+
+	writable(transaction: RBNodeTransaction<K, V>) {
+		return new WritableNode(this.id, transaction)
+	}
+}
+
+export class WritableNode<K, V> {
+	constructor(
+		public readonly id: string,
+		private store: RBNodeTransaction<K, V>
 	) {}
 
 	private get() {
@@ -127,17 +211,17 @@ export class RBNode<K, V> {
 		})
 	}
 
-	getLeft(): RBNode<K, V> | undefined {
+	getLeft(): WritableNode<K, V> | undefined {
 		const leftId = this.get().leftId
 		if (leftId) {
 			const args = this.store.get(leftId)
 			if (args) {
-				return new RBNode(leftId, this.store)
+				return new WritableNode(leftId, this.store)
 			}
 		}
 	}
 
-	setLeft(x: RBNode<K, V> | undefined) {
+	setLeft(x: WritableNode<K, V> | undefined) {
 		if (x) {
 			this.store.set({
 				...this.get(),
@@ -151,17 +235,17 @@ export class RBNode<K, V> {
 		}
 	}
 
-	getRight(): RBNode<K, V> | undefined {
+	getRight(): WritableNode<K, V> | undefined {
 		const rightId = this.get().rightId
 		if (rightId) {
 			const args = this.store.get(rightId)
 			if (args) {
-				return new RBNode(rightId, this.store)
+				return new WritableNode(rightId, this.store)
 			}
 		}
 	}
 
-	setRight(x: RBNode<K, V> | undefined) {
+	setRight(x: WritableNode<K, V> | undefined) {
 		if (x) {
 			this.store.set({
 				...this.get(),
@@ -175,14 +259,14 @@ export class RBNode<K, V> {
 		}
 	}
 
-	clone(args?: Partial<RBNodeData<K, V>>): RBNode<K, V> {
+	clone(args?: Partial<RBNodeData<K, V>>): WritableNode<K, V> {
 		const newNode = {
 			...this.get(),
 			id: randomId(),
 			...args,
 		}
 		this.store.set(newNode)
-		return new RBNode(newNode.id, this.store)
+		return new WritableNode(newNode.id, this.store)
 	}
 
 	repaint(color: 1 | 0) {
@@ -190,7 +274,7 @@ export class RBNode<K, V> {
 	}
 }
 
-function recount<K, V>(node: RBNode<K, V>) {
+function recount<K, V>(node: WritableNode<K, V>) {
 	const left = node.getLeft()
 	const right = node.getRight()
 	node.setCount(1 + (left ? left.count : 0) + (right ? right.count : 0))
@@ -239,7 +323,7 @@ export class RedBlackTree<K, V> {
 		if (this.rootId) {
 			const data = this.store.get(this.rootId)
 			if (data) {
-				return new RBNode(this.rootId, this.store)
+				return new ReadOnlyNode(this.rootId, this.store)
 			}
 		}
 	}
@@ -255,10 +339,12 @@ export class RedBlackTree<K, V> {
 
 	// Insert a new item into the tree
 	insert(key: K, value: V): RedBlackTree<K, V> {
+		const transaction = new RBNodeTransaction(this.store)
+
 		let cmp = this.compare
 		// Find point to insert new node at
-		let n = this.getRoot()
-		let n_stack: Array<RBNode<K, V>> = []
+		let n = this.getRoot()?.writable(transaction)
+		let n_stack: Array<WritableNode<K, V>> = []
 		let d_stack: Array<number> = []
 		while (n) {
 			let d = cmp(key, n.key)
@@ -280,8 +366,8 @@ export class RedBlackTree<K, V> {
 			rightId: undefined,
 			count: 1,
 		}
-		this.store.set(newNodeData)
-		const newNode = new RBNode(newNodeData.id, this.store)
+		transaction.set(newNodeData)
+		const newNode = new WritableNode(newNodeData.id, transaction)
 		n_stack.push(newNode)
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
@@ -443,6 +529,7 @@ export class RedBlackTree<K, V> {
 		}
 		//Return new tree
 		n_stack[0].setColor(BLACK)
+		transaction.commit()
 		return new RedBlackTree({ compare: cmp, rootId: n_stack[0].id }, this.store)
 	}
 
@@ -467,7 +554,7 @@ export class RedBlackTree<K, V> {
 
 	//First item in list
 	get begin(): RedBlackTreeIterator<K, V> {
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let n = this.getRoot()
 		while (n) {
 			stack.push(n)
@@ -478,7 +565,7 @@ export class RedBlackTree<K, V> {
 
 	//Last item in list
 	get end(): RedBlackTreeIterator<K, V> {
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let n = this.getRoot()
 		while (n) {
 			stack.push(n)
@@ -494,7 +581,7 @@ export class RedBlackTree<K, V> {
 			return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
 		}
 		let n = root
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		while (true) {
 			stack.push(n)
 			const left = n.getLeft()
@@ -528,7 +615,7 @@ export class RedBlackTree<K, V> {
 	ge(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -549,7 +636,7 @@ export class RedBlackTree<K, V> {
 	gt(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -570,7 +657,7 @@ export class RedBlackTree<K, V> {
 	lt(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -591,7 +678,7 @@ export class RedBlackTree<K, V> {
 	le(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -613,7 +700,7 @@ export class RedBlackTree<K, V> {
 	find(key: K): RedBlackTreeIterator<K, V> {
 		let cmp = this.compare
 		let n = this.getRoot()
-		let stack: Array<RBNode<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		while (n) {
 			let d = cmp(key, n.key)
 			stack.push(n)
@@ -660,7 +747,7 @@ export class RedBlackTree<K, V> {
 // Visit all nodes inorder
 function doVisitFull<K, V, T>(
 	fn: (key: K, value: V) => T,
-	node: RBNode<K, V>
+	node: ReadOnlyNode<K, V>
 ): T | undefined {
 	const left = node.getLeft()
 	if (left) {
@@ -684,7 +771,7 @@ function doVisitHalf<K, V, T>(
 	lo: K,
 	compare: (a: K, b: K) => number,
 	fn: (key: K, value: V) => T,
-	node: RBNode<K, V>
+	node: ReadOnlyNode<K, V>
 ): T | undefined {
 	let l = compare(lo, node.key)
 	if (l <= 0) {
@@ -712,7 +799,7 @@ function doVisit<K, V, T>(
 	hi: K,
 	compare: (a: K, b: K) => number,
 	fn: (key: K, value: V) => T,
-	node: RBNode<K, V>
+	node: ReadOnlyNode<K, V>
 ): T | undefined {
 	let l = compare(lo, node.key)
 	let h = compare(hi, node.key)
@@ -747,10 +834,10 @@ function doVisit<K, V, T>(
 //Iterator for red black tree
 export class RedBlackTreeIterator<K, V> {
 	public tree: RedBlackTree<K, V>
-	public stack: Array<RBNode<K, V>>
+	public stack: Array<ReadOnlyNode<K, V>>
 
 	constructor(
-		args: { tree: RedBlackTree<K, V>; stack: Array<RBNode<K, V>> },
+		args: { tree: RedBlackTree<K, V>; stack: Array<ReadOnlyNode<K, V>> },
 		private store: RBNodeDataStore<K, V>
 	) {
 		this.tree = args.tree
@@ -784,12 +871,13 @@ export class RedBlackTreeIterator<K, V> {
 
 	//Removes item at iterator from tree
 	remove(): RedBlackTree<K, V> {
-		let stack = this.stack
+		const transaction = new RBNodeTransaction(this.store)
+		let stack = this.stack.map(node => node.writable(transaction))
 		if (stack.length === 0) {
 			return this.tree
 		}
 		//First copy path to node
-		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
+		let cstack: Array<WritableNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
 		cstack[cstack.length - 1] = n.clone()
 		for (let i = stack.length - 2; i >= 0; --i) {
@@ -854,6 +942,7 @@ export class RedBlackTreeIterator<K, V> {
 			for (let i = 0; i < cstack.length; ++i) {
 				cstack[i].setCount(cstack[i].count - 1)
 			}
+			transaction.commit()
 			return this.tree.clone(cstack[0].id)
 		} else {
 			const left = n.getLeft()
@@ -871,10 +960,12 @@ export class RedBlackTreeIterator<K, V> {
 				for (let i = 0; i < cstack.length - 1; ++i) {
 					cstack[i].setCount(cstack[i].count - 1)
 				}
+				transaction.commit()
 				return this.tree.clone(cstack[0].id)
 			} else if (cstack.length === 1) {
 				//Third easy case: root
 				//console.log("ROOT")
+				transaction.commit()
 				return this.tree.clone(undefined)
 			} else {
 				//Hard case: Repaint n, and then do some nasty stuff
@@ -892,6 +983,7 @@ export class RedBlackTreeIterator<K, V> {
 				}
 			}
 		}
+		transaction.commit()
 		return this.tree.clone(cstack[0].id)
 	}
 
@@ -945,7 +1037,7 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return
 		}
-		let n: RBNode<K, V> | undefined = stack[stack.length - 1]
+		let n: ReadOnlyNode<K, V> | undefined = stack[stack.length - 1]
 		const right = n.getRight()
 		if (right) {
 			n = right
@@ -998,11 +1090,12 @@ export class RedBlackTreeIterator<K, V> {
 
 	//Update value
 	update(value: V) {
-		let stack = this.stack
+		const transaction = new RBNodeTransaction(this.store)
+		let stack = this.stack.map(node => node.writable(transaction))
 		if (stack.length === 0) {
 			throw new Error("Can't update empty node!")
 		}
-		let cstack: Array<RBNode<K, V>> = new Array(stack.length)
+		let cstack: Array<WritableNode<K, V>> = new Array(stack.length)
 		let n = stack[stack.length - 1]
 		cstack[cstack.length - 1] = n.clone({
 			value,
@@ -1019,6 +1112,7 @@ export class RedBlackTreeIterator<K, V> {
 				})
 			}
 		}
+		transaction.commit()
 		return this.tree.clone(cstack[0].id)
 	}
 
@@ -1028,7 +1122,7 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return
 		}
-		let n: RBNode<K, V> | undefined = stack[stack.length - 1]
+		let n: ReadOnlyNode<K, V> | undefined = stack[stack.length - 1]
 		const left = n.getLeft()
 		if (left) {
 			n = left
@@ -1047,7 +1141,7 @@ export class RedBlackTreeIterator<K, V> {
 }
 
 //Swaps two nodes
-function swapNode<K, V>(n: RBNode<K, V>, v: RBNode<K, V>) {
+function swapNode<K, V>(n: WritableNode<K, V>, v: WritableNode<K, V>) {
 	n.setKey(v.key)
 	n.setValue(v.value)
 	n.setLeft(v.getLeft())
@@ -1057,7 +1151,7 @@ function swapNode<K, V>(n: RBNode<K, V>, v: RBNode<K, V>) {
 }
 
 //Fix up a double black node in a tree
-function fixDoubleBlack<K, V>(stack: Array<RBNode<K, V>>) {
+function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 	for (let i = stack.length - 1; i >= 0; --i) {
 		let n = stack[i]
 		if (i === 0) {
