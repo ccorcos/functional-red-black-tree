@@ -252,20 +252,6 @@ export class WritableNode<K, V> {
 		}
 	}
 
-	setLeft(x: WritableNode<K, V> | undefined) {
-		if (x) {
-			this.store.set({
-				...this.get(),
-				leftId: x.id,
-			})
-		} else {
-			this.store.set({
-				...this.get(),
-				leftId: undefined,
-			})
-		}
-	}
-
 	setLeftId(x: string | undefined) {
 		this.store.set({
 			...this.get(),
@@ -277,20 +263,6 @@ export class WritableNode<K, V> {
 		const rightId = this.get().rightId
 		if (rightId) {
 			return this.store.get(rightId)
-		}
-	}
-
-	setRight(x: WritableNode<K, V> | undefined) {
-		if (x) {
-			this.store.set({
-				...this.get(),
-				rightId: x.id,
-			})
-		} else {
-			this.store.set({
-				...this.get(),
-				rightId: undefined,
-			})
 		}
 	}
 
@@ -449,15 +421,15 @@ export class RedBlackTree<K, V> {
 
 						//console.log("LLr")
 						p.setColor(BLACK)
-						pp.setRight(y.repaint(BLACK))
+						pp.setRightId(y.repaint(BLACK).id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
 						//console.log("LLb")
 						pp.setColor(RED)
-						pp.setLeft(await p.getRight())
+						pp.setLeftId(p.rightId)
 						p.setColor(BLACK)
-						p.setRight(pp)
+						p.setRightId(pp.id)
 						n_stack[s - 2] = p
 						n_stack[s - 1] = n
 						await recount(pp)
@@ -465,9 +437,9 @@ export class RedBlackTree<K, V> {
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.leftId === pp.id) {
-								ppp.setLeft(p)
+								ppp.setLeftId(p.id)
 							} else {
-								ppp.setRight(p)
+								ppp.setRightId(p.id)
 							}
 						}
 						break
@@ -477,17 +449,17 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("LRr")
 						p.setColor(BLACK)
-						pp.setRight(y.repaint(BLACK))
+						pp.setRightId(y.repaint(BLACK).id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
 						//console.log("LRb")
-						p.setRight(await n.getLeft())
+						p.setRightId(n.leftId)
 						pp.setColor(RED)
-						pp.setLeft(await n.getRight())
+						pp.setLeftId(n.rightId)
 						n.setColor(BLACK)
-						n.setLeft(p)
-						n.setRight(pp)
+						n.setLeftId(p.id)
+						n.setRightId(pp.id)
 						n_stack[s - 2] = n
 						n_stack[s - 1] = p
 						await recount(pp)
@@ -496,9 +468,9 @@ export class RedBlackTree<K, V> {
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.leftId === pp.id) {
-								ppp.setLeft(n)
+								ppp.setLeftId(n.id)
 							} else {
-								ppp.setRight(n)
+								ppp.setRightId(n.id)
 							}
 						}
 						break
@@ -510,15 +482,15 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("RRr", y.key)
 						p.setColor(BLACK)
-						pp.setLeft(y.repaint(BLACK))
+						pp.setLeftId(y.repaint(BLACK).id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
 						//console.log("RRb")
 						pp.setColor(RED)
-						pp.setRight(await p.getLeft())
+						pp.setRightId(p.leftId)
 						p.setColor(BLACK)
-						p.setLeft(pp)
+						p.setLeftId(pp.id)
 						n_stack[s - 2] = p
 						n_stack[s - 1] = n
 						await recount(pp)
@@ -526,9 +498,9 @@ export class RedBlackTree<K, V> {
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.rightId === pp.id) {
-								ppp.setRight(p)
+								ppp.setRightId(p.id)
 							} else {
-								ppp.setLeft(p)
+								ppp.setLeftId(p.id)
 							}
 						}
 						break
@@ -538,17 +510,17 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("RLr")
 						p.setColor(BLACK)
-						pp.setLeft(y.repaint(BLACK))
+						pp.setLeftId(y.repaint(BLACK).id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
 						//console.log("RLb")
-						p.setLeft(await n.getRight())
+						p.setLeftId(n.rightId)
 						pp.setColor(RED)
-						pp.setRight(await n.getLeft())
+						pp.setRightId(n.leftId)
 						n.setColor(BLACK)
-						n.setRight(p)
-						n.setLeft(pp)
+						n.setRightId(p.id)
+						n.setLeftId(pp.id)
 						n_stack[s - 2] = n
 						n_stack[s - 1] = p
 						await recount(pp)
@@ -557,9 +529,9 @@ export class RedBlackTree<K, V> {
 						if (s >= 3) {
 							let ppp = n_stack[s - 3]
 							if (ppp.rightId === pp.id) {
-								ppp.setRight(n)
+								ppp.setRightId(n.id)
 							} else {
-								ppp.setLeft(n)
+								ppp.setLeftId(n.id)
 							}
 						}
 						break
@@ -967,7 +939,7 @@ export class RedBlackTreeIterator<K, V> {
 					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
 				})
 			}
-			cstack[split - 1].setLeft(cstack[split])
+			cstack[split - 1].setLeftId(cstack[split].id)
 		}
 		//console.log("stack=", cstack.map(function(v) { return v.value }))
 
@@ -978,9 +950,9 @@ export class RedBlackTreeIterator<K, V> {
 			//console.log("RED leaf")
 			let p = cstack[cstack.length - 2]
 			if (p.leftId === n.id) {
-				p.setLeft(undefined)
+				p.setLeftId(undefined)
 			} else if (p.rightId === n.id) {
-				p.setRight(undefined)
+				p.setRightId(undefined)
 			}
 			cstack.pop()
 			for (let i = 0; i < cstack.length; ++i) {
@@ -1021,9 +993,9 @@ export class RedBlackTreeIterator<K, V> {
 				await fixDoubleBlack(cstack)
 				//Fix up links
 				if (parent.leftId === n.id) {
-					parent.setLeft(undefined)
+					parent.setLeftId(undefined)
 				} else {
-					parent.setRight(undefined)
+					parent.setRightId(undefined)
 				}
 			}
 		}
@@ -1214,12 +1186,12 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 			if (right && right.color === RED) {
 				//console.log("case 1: right sibling child red")
 				s = s.clone()
-				p.setRight(s)
+				p.setRightId(s.id)
 				let z = right.clone()
-				s.setRight(z)
+				s.setRightId(z.id)
 				p.setRightId(s.leftId)
-				s.setLeft(p)
-				s.setRight(z)
+				s.setLeftId(p.id)
+				s.setRightId(z.id)
 				s.setColor(p.color)
 				n.setColor(BLACK)
 				p.setColor(BLACK)
@@ -1229,9 +1201,9 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.leftId === p.id) {
-						pp.setLeft(s)
+						pp.setLeftId(s.id)
 					} else {
-						pp.setRight(s)
+						pp.setRightId(s.id)
 					}
 				}
 				stack[i - 1] = s
@@ -1241,13 +1213,13 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (left && left.color === RED) {
 					//console.log("case 1: left sibling child red")
 					s = s.clone()
-					p.setRight(s)
+					p.setRightId(s.id)
 					let z = left.clone()
-					s.setLeft(z)
+					s.setLeftId(z.id)
 					p.setRightId(z.leftId)
 					s.setLeftId(z.rightId)
-					z.setLeft(p)
-					z.setRight(s)
+					z.setLeftId(p.id)
+					z.setRightId(s.id)
 					z.setColor(p.color)
 					p.setColor(BLACK)
 					s.setColor(BLACK)
@@ -1258,9 +1230,9 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 					if (i > 1) {
 						let pp = stack[i - 2]
 						if (pp.leftId === p.id) {
-							pp.setLeft(z)
+							pp.setLeftId(z.id)
 						} else {
-							pp.setRight(z)
+							pp.setRightId(z.id)
 						}
 					}
 					stack[i - 1] = z
@@ -1271,18 +1243,18 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent", p.right.value)
 					p.setColor(BLACK)
-					p.setRight(s.repaint(RED))
+					p.setRightId(s.repaint(RED).id)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent", p.right.value)
-					p.setRight(s.repaint(RED))
+					p.setRightId(s.repaint(RED).id)
 					continue
 				}
 			} else {
 				//console.log("case 3: red sibling")
 				s = s.clone()
 				p.setRightId(s.leftId)
-				s.setLeft(p)
+				s.setLeftId(p.id)
 				s.setColor(p.color)
 				p.setColor(RED)
 				await recount(p)
@@ -1290,9 +1262,9 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.leftId === p.id) {
-						pp.setLeft(s)
+						pp.setLeftId(s.id)
 					} else {
-						pp.setRight(s)
+						pp.setRightId(s.id)
 					}
 				}
 				stack[i - 1] = s
@@ -1314,12 +1286,12 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 			if (left && left.color === RED) {
 				//console.log("case 1: left sibling child red", p.value, p._color)
 				s = s.clone()
-				p.setLeft(s)
+				p.setLeftId(s.id)
 				let z = left.clone()
-				s.setLeft(z)
+				s.setLeftId(z.id)
 				p.setLeftId(s.rightId)
-				s.setRight(p)
-				s.setLeft(z)
+				s.setRightId(p.id)
+				s.setLeftId(z.id)
 				s.setColor(p.color)
 				n.setColor(BLACK)
 				p.setColor(BLACK)
@@ -1329,9 +1301,9 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.rightId === p.id) {
-						pp.setRight(s)
+						pp.setRightId(s.id)
 					} else {
-						pp.setLeft(s)
+						pp.setLeftId(s.id)
 					}
 				}
 				stack[i - 1] = s
@@ -1341,13 +1313,13 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (right && right.color === RED) {
 					//console.log("case 1: right sibling child red")
 					s = s.clone()
-					p.setLeft(s)
+					p.setLeftId(s.id)
 					let z = right.clone()
-					s.setRight(z)
+					s.setRightId(z.id)
 					p.setLeftId(z.rightId)
 					s.setRightId(z.leftId)
-					z.setRight(p)
-					z.setLeft(s)
+					z.setRightId(p.id)
+					z.setLeftId(s.id)
 					z.setColor(p.color)
 					p.setColor(BLACK)
 					s.setColor(BLACK)
@@ -1358,9 +1330,9 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 					if (i > 1) {
 						let pp = stack[i - 2]
 						if (pp.rightId === p.id) {
-							pp.setRight(z)
+							pp.setRightId(z.id)
 						} else {
-							pp.setLeft(z)
+							pp.setLeftId(z.id)
 						}
 					}
 					stack[i - 1] = z
@@ -1371,18 +1343,18 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent")
 					p.setColor(BLACK)
-					p.setLeft(s.repaint(RED))
+					p.setLeftId(s.repaint(RED).id)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent")
-					p.setLeft(s.repaint(RED))
+					p.setLeftId(s.repaint(RED).id)
 					continue
 				}
 			} else {
 				//console.log("case 3: red sibling")
 				s = s.clone()
 				p.setLeftId(s.rightId)
-				s.setRight(p)
+				s.setRightId(p.id)
 				s.setColor(p.color)
 				p.setColor(RED)
 				await recount(p)
@@ -1390,9 +1362,9 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.rightId === p.id) {
-						pp.setRight(s)
+						pp.setRightId(s.id)
 					} else {
-						pp.setLeft(s)
+						pp.setLeftId(s.id)
 					}
 				}
 				stack[i - 1] = s
