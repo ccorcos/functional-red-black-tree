@@ -2,13 +2,7 @@
 
 Game Plan:
 
-- Separate `insert`, `update`, and `remove` from the rest of
-	the code. That's the only part that requires a transaction.
-
-- Two classes of RBNode. Only get a writable node from a transaction.
-
-- Simplify ReadOnlyNode.
-
+- `transaction.clone` is the only way to get a Writable node.
 
 # Architecture
 
