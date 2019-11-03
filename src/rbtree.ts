@@ -1,15 +1,14 @@
 /*
 
 Game Plan:
-- [x] convert to typescript.
-- [x] persist to a key-value map.
+
+- Separate `insert`, `update`, and `remove` from the rest of
+	the code. That's the only part that requires a transaction.
+
+
+
 - [ ] convert everything to async
-	- [x] no more setters and getters
-	- [ ] immuable RBNodes, readonly properties.
-		- [ ] no more RBNode.store, save outside of setters.
-	- [ ] async key-value-store
-
-
+- [ ] async key-value-store
 - [ ] write transactionally
 - [ ] persist to leveldb.
 - [ ] generators to run sync or async
@@ -18,131 +17,7 @@ Game Plan:
 
 */
 
-/*
-
-https://www.geeksforgeeks.org/red-black-tree-set-2-insert/
-
-
-*/
-
-/*
-
-interface KeyValueStore<K, V> {
-	get(key: K): Promise<V | undefined>
-	set(key: K, value: V): Promise<void>
-	delete(key: K): Promise<void>
-}
-
-// Going to serialize to simulate a real backend.
-class InMemoryKeyValueStore implements KeyValueStore<string, string> {
-	private map: Record<string, string> = {}
-	async get(key: string): Promise<string | undefined> {
-		return this.map[key]
-	}
-	async set(key: string, value: string): Promise<void> {
-		this.map[key] = value
-	}
-	async delete(key: string): Promise<void> {
-		delete this.map[key]
-	}
-}
-
-class RBNodeDataStore<K, V> {
-	constructor(private store: InMemoryKeyValueStore) {}
-	async get(key: string): Promise<RBNodeData<K, V> | undefined> {
-		const result = await this.store.get(key)
-		if (result) {
-			return JSON.parse(result)
-		}
-	}
-	async batch(operations: Array<Operation<K, V>>) {
-		for (const op of operations) {
-			if (op.type === "set") {
-				const node = op.value
-				await this.store.set(node.id, JSON.stringify(node))
-			} else {
-				await this.store.delete(op.id)
-			}
-		}
-	}
-}
-
-// class RBNodeCache<K, V> implements KeyValueStore<string, RBNode<K, V>> {
-// 	private cache: Record<string, RBNode<K, V>> = {}
-// 	constructor(private store: KeyValueStore<string, RBNode<K, V>>) {}
-
-// 	get(key: string): RBNode<K, V> | undefined {
-// 		const value = this.store.get(key)
-// 		if (value !== undefined) {
-// 			this.cache[key] = value
-// 		}
-// 		return value
-// 	}
-// 	set(key: string, value: RBNode<K, V>): void {
-// 		this.store.set(key, value)
-// 		this.cache[key] = value
-// 	}
-// 	delete(key: string): void {
-// 		this.store.delete(key)
-// 		delete this.cache[key]
-// 	}
-// }
-
-type Operation<K, V> =
-	| { type: "delete"; id: string }
-	| {
-			type: "set"
-			id: string
-			value: RBNodeData<K, V>
-	  }
-
-class RBNodeTransaction<K, V> {
-	constructor(private store: RBNodeDataStore<K, V>) {}
-
-	cache: Record<string, RBNodeData<K, V> | undefined> = {}
-
-	changes: Record<string, Operation<K, V>> = {}
-
-	async get(nodeId: string): Promise<RBNode<K, V> | undefined> {
-		if (nodeId in this.cache) {
-			const data = this.cache[nodeId]
-			if (data !== undefined) {
-				return new RBNode(data, this)
-			}
-		}
-		const data = await this.store.get(nodeId)
-		this.cache[nodeId] = data
-		if (data !== undefined) {
-			return new RBNode(data, this)
-		}
-	}
-
-	set(value: RBNodeData<K, V>): void {
-		this.cache[value.id] = value
-		this.changes[value.id] = { type: "set", id: value.id, value }
-	}
-
-	delete(nodeId: string): void {
-		this.cache[nodeId] = undefined
-		this.changes[nodeId] = { type: "delete", id: nodeId }
-	}
-
-	async commit() {
-		const ops = Object.values(this.changes)
-		await this.store.batch(ops)
-	}
-}
-
-*/
-
-interface KeyValueStore<K, V> {
-	get(key: K): V | undefined
-	set(key: K, value: V): void
-	delete(key: K): void
-}
-
-// Going to serialize to simulate a real backend.
-class InMemoryKeyValueStore implements KeyValueStore<string, string> {
+class InMemoryKeyValueStore {
 	private map: Record<string, string> = {}
 	get(key: string): string | undefined {
 		return this.map[key]
@@ -155,7 +30,7 @@ class InMemoryKeyValueStore implements KeyValueStore<string, string> {
 	}
 }
 
-class RBNodeDataStore<K, V> implements KeyValueStore<string, RBNodeData<K, V>> {
+class RBNodeDataStore<K, V> {
 	constructor(private store: InMemoryKeyValueStore) {}
 	get(key: string): RBNodeData<K, V> | undefined {
 		const result = this.store.get(key)
@@ -170,6 +45,22 @@ class RBNodeDataStore<K, V> implements KeyValueStore<string, RBNodeData<K, V>> {
 		this.store.delete(key)
 	}
 }
+
+// class RBNodeDataCache<K, V> {
+// 	private cache: Record<string, RBNodeData<K, V>> = {}
+// 	constructor(private store: RBNodeDataStore<K, V>) {}
+// 	get(key: string): RBNodeData<K, V> | undefined {
+// 		const value = this.store.get(key)
+// 		if (value !== undefined) {
+// 			this.cache[key] = value
+// 		}
+// 		return value
+// 	}
+// 	set(key: string, value: RBNodeData<K, V>): void {
+// 		this.store.set(key, value)
+// 		this.cache[key] = value
+// 	}
+// }
 
 function randomId() {
 	return Math.round(Math.random() * 1e10).toString()
@@ -193,7 +84,7 @@ export class RBNode<K, V> {
 
 	constructor(
 		private args: RBNodeData<K, V>,
-		private store: KeyValueStore<string, RBNodeData<K, V>>
+		private store: RBNodeDataStore<K, V>
 	) {
 		this.id = args.id
 	}
@@ -317,7 +208,7 @@ export class RedBlackTree<K, V> {
 			compare: (a: K, b: K) => number
 			rootId: string | undefined
 		},
-		private store: KeyValueStore<string, RBNodeData<K, V>>
+		private store: RBNodeDataStore<K, V>
 	) {
 		this.compare = args.compare
 		this.rootId = args.rootId
@@ -857,7 +748,7 @@ export class RedBlackTreeIterator<K, V> {
 
 	constructor(
 		args: { tree: RedBlackTree<K, V>; stack: Array<RBNode<K, V>> },
-		private store: KeyValueStore<string, RBNodeData<K, V>>
+		private store: RBNodeDataStore<K, V>
 	) {
 		this.tree = args.tree
 		this.stack = args.stack
