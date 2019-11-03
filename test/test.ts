@@ -1,6 +1,6 @@
 import makeTree, {
 	RedBlackTree,
-	RBNodeData,
+	ReadOnlyNode,
 	RedBlackTreeIterator,
 } from "../src/rbtree"
 import * as tape from "tape"
@@ -10,7 +10,7 @@ const iota = require("iota-array") as (n: number) => Array<number>
 var COLORS = ["r", "b", "bb"]
 
 async function printTree<K, V>(
-	tree: RBNodeData<K, V> | undefined
+	tree: ReadOnlyNode<K, V> | undefined
 ): Promise<any> {
 	if (!tree) {
 		return []

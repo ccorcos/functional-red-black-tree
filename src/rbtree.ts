@@ -7,7 +7,7 @@ Game Plan:
 
 - Two classes of RBNode. Only get a writable node from a transaction.
 
-- Simplify RBNodeData.
+- Simplify ReadOnlyNode.
 
 
 # Architecture
@@ -98,7 +98,7 @@ class RBNodeTransaction<K, V> {
 		}, this)
 	}
 
-	from(node: RBNodeData<K, V>): WritableNode<K, V> {
+	from(node: ReadOnlyNode<K, V>): WritableNode<K, V> {
 		const id = node.id
 		this.cache[id] = {
 			id: node.id,
@@ -133,7 +133,7 @@ function randomId() {
 let RED = 0 as const
 let BLACK = 1 as const
 
-export interface RBNodeData<K, V> {
+interface RBNodeData<K, V> {
 	readonly id: string
 	readonly color: 1 | 0
 	readonly key: K
@@ -141,6 +141,46 @@ export interface RBNodeData<K, V> {
 	readonly leftId: string | undefined
 	readonly rightId: string | undefined
 	readonly count: number
+}
+
+export class ReadOnlyNode<K, V> {
+	readonly id: string
+	readonly color: 1 | 0
+	readonly key: K
+	readonly value: V
+	readonly leftId: string | undefined
+	readonly rightId: string | undefined
+	readonly count: number
+
+	constructor(data: RBNodeData<K, V>, private store: RBNodeDataStore<K, V>) {
+		this.id = data.id
+		this.color = data.color
+		this.key = data.key
+		this.value = data.value
+		this.leftId = data.leftId
+		this.rightId = data.rightId
+		this.count = data.count
+	}
+
+	async getLeft(): Promise<ReadOnlyNode<K, V> | undefined> {
+		const leftId = this.leftId
+		if (leftId) {
+			const data = await this.store.get(leftId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
+			}
+		}
+	}
+
+	async getRight(): Promise<ReadOnlyNode<K, V> | undefined> {
+		const rightId = this.rightId
+		if (rightId) {
+			const data = await this.store.get(rightId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
+			}
+		}
+	}
 }
 
 export class WritableNode<K, V> {
@@ -292,15 +332,13 @@ export class RedBlackTree<K, V> {
 		return result
 	}
 
-	async getNode(id: string | undefined) {
-		if (id === undefined) {
-			return
-		}
-		return this.store.get(id)
-	}
-
 	async getRoot() {
-		return this.getNode(this.rootId)
+		if (this.rootId) {
+			const data = await this.store.get(this.rootId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
+			}
+		}
 	}
 
 	// Returns the number of nodes in the tree
@@ -521,116 +559,33 @@ export class RedBlackTree<K, V> {
 				if (this.compare(lo, hi) >= 0) {
 					return
 				}
-				return this.doVisit(lo, hi, this.compare, fn, root)
+				return doVisit(lo, hi, this.compare, fn, root)
 			} else {
-				return this.doVisitHalf(lo, this.compare, fn, root)
+				return doVisitHalf(lo, this.compare, fn, root)
 			}
 		} else {
-			return this.doVisitFull(fn, root)
-		}
-	}
-
-	// Visit all nodes inorder
-	async doVisitFull<T>(
-		fn: (key: K, value: V) => T,
-		node: RBNodeData<K, V>
-	): Promise<T | undefined> {
-		const left = await this.getNode(node.leftId)
-		if (left) {
-			let v = await this.doVisitFull(fn, left)
-			if (v) {
-				return v
-			}
-		}
-		let v = fn(node.key, node.value)
-		if (v) {
-			return v
-		}
-		const right = await this.getNode(node.rightId)
-		if (right) {
-			return this.doVisitFull(fn, right)
-		}
-	}
-
-	// Visit half nodes in order
-	async doVisitHalf<T>(
-		lo: K,
-		compare: (a: K, b: K) => number,
-		fn: (key: K, value: V) => T,
-		node: RBNodeData<K, V>
-	): Promise<T | undefined> {
-		let l = compare(lo, node.key)
-		if (l <= 0) {
-			const left = await this.getNode(node.leftId)
-			if (left) {
-				let v = await this.doVisitHalf(lo, compare, fn, left)
-				if (v) {
-					return v
-				}
-			}
-			let v = fn(node.key, node.value)
-			if (v) {
-				return v
-			}
-		}
-		const right = await this.getNode(node.rightId)
-		if (right) {
-			return this.doVisitHalf(lo, compare, fn, right)
-		}
-	}
-
-	//Visit all nodes within a range
-	async doVisit<T>(
-		lo: K,
-		hi: K,
-		compare: (a: K, b: K) => number,
-		fn: (key: K, value: V) => T,
-		node: RBNodeData<K, V>
-	): Promise<T | undefined> {
-		let l = compare(lo, node.key)
-		let h = compare(hi, node.key)
-		let v
-		if (l <= 0) {
-			const left = await this.getNode(node.leftId)
-			if (left) {
-				v = await this.doVisit(lo, hi, compare, fn, left)
-				if (v) {
-					return v
-				}
-			}
-			if (h > 0) {
-				v = fn(node.key, node.value)
-				if (v) {
-					return v
-				}
-			}
-		}
-		if (h > 0) {
-			const right = await this.getNode(node.rightId)
-			if (right) {
-				return this.doVisit(lo, hi, compare, fn, right)
-			}
+			return doVisitFull(fn, root)
 		}
 	}
 
 	//First item in list
 	async begin(): Promise<RedBlackTreeIterator<K, V>> {
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let n = await this.getRoot()
 		while (n) {
 			stack.push(n)
-			n = await this.getNode(n.leftId)
+			n = await n.getLeft()
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
 	}
 
 	//Last item in list
 	async end(): Promise<RedBlackTreeIterator<K, V>> {
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let n = await this.getRoot()
 		while (n) {
 			stack.push(n)
-			n = await this.getNode(n.rightId)
+			n = await n.getRight()
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: stack }, this.store)
 	}
@@ -642,10 +597,10 @@ export class RedBlackTree<K, V> {
 			return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
 		}
 		let n = root
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		while (true) {
 			stack.push(n)
-			const left = await this.getNode(n.leftId)
+			const left = await n.getLeft()
 			if (left) {
 				if (idx < left.count) {
 					n = left
@@ -660,7 +615,7 @@ export class RedBlackTree<K, V> {
 				)
 			}
 			idx -= 1
-			const right = await this.getNode(n.rightId)
+			const right = await n.getRight()
 			if (right) {
 				if (idx >= right.count) {
 					break
@@ -676,7 +631,7 @@ export class RedBlackTree<K, V> {
 	async ge(key: K): Promise<RedBlackTreeIterator<K, V>> {
 		let cmp = this.compare
 		let n = await this.getRoot()
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -685,9 +640,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d <= 0) {
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			} else {
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		}
 		stack.length = last_ptr
@@ -697,7 +652,7 @@ export class RedBlackTree<K, V> {
 	async gt(key: K): Promise<RedBlackTreeIterator<K, V>> {
 		let cmp = this.compare
 		let n = await this.getRoot()
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -706,9 +661,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d < 0) {
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			} else {
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		}
 		stack.length = last_ptr
@@ -718,7 +673,7 @@ export class RedBlackTree<K, V> {
 	async lt(key: K): Promise<RedBlackTreeIterator<K, V>> {
 		let cmp = this.compare
 		let n = await this.getRoot()
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -727,9 +682,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d <= 0) {
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			} else {
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		}
 		stack.length = last_ptr
@@ -739,7 +694,7 @@ export class RedBlackTree<K, V> {
 	async le(key: K): Promise<RedBlackTreeIterator<K, V>> {
 		let cmp = this.compare
 		let n = await this.getRoot()
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		let last_ptr = 0
 		while (n) {
 			let d = cmp(key, n.key)
@@ -748,9 +703,9 @@ export class RedBlackTree<K, V> {
 				last_ptr = stack.length
 			}
 			if (d < 0) {
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			} else {
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		}
 		stack.length = last_ptr
@@ -761,7 +716,7 @@ export class RedBlackTree<K, V> {
 	async find(key: K): Promise<RedBlackTreeIterator<K, V>> {
 		let cmp = this.compare
 		let n = await this.getRoot()
-		let stack: Array<RBNodeData<K, V>> = []
+		let stack: Array<ReadOnlyNode<K, V>> = []
 		while (n) {
 			let d = cmp(key, n.key)
 			stack.push(n)
@@ -769,9 +724,9 @@ export class RedBlackTree<K, V> {
 				return new RedBlackTreeIterator({ tree: this, stack }, this.store)
 			}
 			if (d <= 0) {
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			} else {
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		}
 		return new RedBlackTreeIterator({ tree: this, stack: [] }, this.store)
@@ -796,12 +751,95 @@ export class RedBlackTree<K, V> {
 				return n.value
 			}
 			if (d <= 0) {
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			} else {
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		}
 		return
+	}
+}
+
+// Visit all nodes inorder
+async function doVisitFull<K, V, T>(
+	fn: (key: K, value: V) => T,
+	node: ReadOnlyNode<K, V>
+): Promise<T | undefined> {
+	const left = await node.getLeft()
+	if (left) {
+		let v = await doVisitFull(fn, left)
+		if (v) {
+			return v
+		}
+	}
+	let v = fn(node.key, node.value)
+	if (v) {
+		return v
+	}
+	const right = await node.getRight()
+	if (right) {
+		return doVisitFull(fn, right)
+	}
+}
+
+// Visit half nodes in order
+async function doVisitHalf<K, V, T>(
+	lo: K,
+	compare: (a: K, b: K) => number,
+	fn: (key: K, value: V) => T,
+	node: ReadOnlyNode<K, V>
+): Promise<T | undefined> {
+	let l = compare(lo, node.key)
+	if (l <= 0) {
+		const left = await node.getLeft()
+		if (left) {
+			let v = await doVisitHalf(lo, compare, fn, left)
+			if (v) {
+				return v
+			}
+		}
+		let v = fn(node.key, node.value)
+		if (v) {
+			return v
+		}
+	}
+	const right = await node.getRight()
+	if (right) {
+		return doVisitHalf(lo, compare, fn, right)
+	}
+}
+
+//Visit all nodes within a range
+async function doVisit<K, V, T>(
+	lo: K,
+	hi: K,
+	compare: (a: K, b: K) => number,
+	fn: (key: K, value: V) => T,
+	node: ReadOnlyNode<K, V>
+): Promise<T | undefined> {
+	let l = compare(lo, node.key)
+	let h = compare(hi, node.key)
+	let v
+	if (l <= 0) {
+		const left = await node.getLeft()
+		if (left) {
+			v = await doVisit(lo, hi, compare, fn, left)
+			if (v) {
+				return v
+			}
+		}
+		if (h > 0) {
+			v = fn(node.key, node.value)
+			if (v) {
+				return v
+			}
+		}
+	}
+	if (h > 0) {
+		const right = await node.getRight()
+		if (right) {
+			return doVisit(lo, hi, compare, fn, right)
+		}
 	}
 }
 
@@ -812,21 +850,14 @@ export class RedBlackTree<K, V> {
 //Iterator for red black tree
 export class RedBlackTreeIterator<K, V> {
 	public tree: RedBlackTree<K, V>
-	public stack: Array<RBNodeData<K, V>>
+	public stack: Array<ReadOnlyNode<K, V>>
 
 	constructor(
-		args: { tree: RedBlackTree<K, V>; stack: Array<RBNodeData<K, V>> },
+		args: { tree: RedBlackTree<K, V>; stack: Array<ReadOnlyNode<K, V>> },
 		private store: RBNodeDataStore<K, V>
 	) {
 		this.tree = args.tree
 		this.stack = args.stack
-	}
-
-	async getNode(id: string | undefined) {
-		if (id === undefined) {
-			return
-		}
-		return this.store.get(id)
 	}
 
 	//Test if iterator is valid
@@ -999,7 +1030,7 @@ export class RedBlackTreeIterator<K, V> {
 			}
 			return 0
 		} else {
-			const left = await this.getNode(stack[stack.length - 1].leftId)
+			const left = await stack[stack.length - 1].getLeft()
 			if (left) {
 				idx = left.count
 			}
@@ -1007,7 +1038,7 @@ export class RedBlackTreeIterator<K, V> {
 		for (let s = stack.length - 2; s >= 0; --s) {
 			if (stack[s + 1].id === stack[s].rightId) {
 				++idx
-				const left = await this.getNode(stack[s].leftId)
+				const left = await stack[s].getLeft()
 				if (left) {
 					idx += left.count
 				}
@@ -1022,13 +1053,13 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return
 		}
-		let n: RBNodeData<K, V> | undefined = stack[stack.length - 1]
-		const right = await this.getNode(n.rightId)
+		let n: ReadOnlyNode<K, V> | undefined = stack[stack.length - 1]
+		const right = await n.getRight()
 		if (right) {
 			n = right
 			while (n) {
 				stack.push(n)
-				n = await this.getNode(n.leftId)
+				n = await n.getLeft()
 			}
 		} else {
 			stack.pop()
@@ -1107,13 +1138,13 @@ export class RedBlackTreeIterator<K, V> {
 		if (stack.length === 0) {
 			return
 		}
-		let n: RBNodeData<K, V> | undefined = stack[stack.length - 1]
-		const left = await this.getNode(n.leftId)
+		let n: ReadOnlyNode<K, V> | undefined = stack[stack.length - 1]
+		const left = await n.getLeft()
 		if (left) {
 			n = left
 			while (n) {
 				stack.push(n)
-				n = await this.getNode(n.rightId)
+				n = await n.getRight()
 			}
 		} else {
 			stack.pop()
