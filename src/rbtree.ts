@@ -7,6 +7,19 @@ Game Plan:
 
 - Two classes of RBNode. Only get a writable node from a transaction.
 
+- Simplify ReadOnlyNode.
+
+
+# Architecture
+
+RedBlackTree
+	-> RedBlackNode
+	-> RedBlackIterator
+
+insert()
+update()
+remove()
+
 
 - [ ] convert everything to async
 - [ ] async key-value-store
@@ -83,59 +96,40 @@ interface RBNodeData<K, V> {
 }
 
 export class ReadOnlyNode<K, V> {
-	constructor(
-		public readonly id: string,
-		private store: RBNodeDataStore<K, V>
-	) {}
+	readonly id: string
+	readonly color: 1 | 0
+	readonly key: K
+	readonly value: V
+	readonly leftId: string | undefined
+	readonly rightId: string | undefined
+	readonly count: number
 
-	private get() {
-		const result = this.store.get(this.id)
-		if (!result) {
-			throw new Error("This shouldn't happen")
-		}
-		return result
-	}
-
-	get color() {
-		return this.get().color
-	}
-
-	get key() {
-		return this.get().key
-	}
-
-	get value() {
-		return this.get().value
-	}
-
-	get count() {
-		return this.get().count
-	}
-
-	get leftId() {
-		return this.get().leftId
-	}
-
-	get rightId() {
-		return this.get().rightId
+	constructor(data: RBNodeData<K, V>, private store: RBNodeDataStore<K, V>) {
+		this.id = data.id
+		this.color = data.color
+		this.key = data.key
+		this.value = data.value
+		this.leftId = data.leftId
+		this.rightId = data.rightId
+		this.count = data.count
 	}
 
 	getLeft(): ReadOnlyNode<K, V> | undefined {
-		const leftId = this.get().leftId
+		const leftId = this.leftId
 		if (leftId) {
-			const args = this.store.get(leftId)
-			if (args) {
-				return new ReadOnlyNode(leftId, this.store)
+			const data = this.store.get(leftId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
 			}
 		}
 	}
 
 	getRight(): ReadOnlyNode<K, V> | undefined {
-		const rightId = this.get().rightId
+		const rightId = this.rightId
 		if (rightId) {
-			const args = this.store.get(rightId)
-			if (args) {
-				return new ReadOnlyNode(rightId, this.store)
+			const data = this.store.get(rightId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
 			}
 		}
 	}
@@ -323,7 +317,7 @@ export class RedBlackTree<K, V> {
 		if (this.rootId) {
 			const data = this.store.get(this.rootId)
 			if (data) {
-				return new ReadOnlyNode(this.rootId, this.store)
+				return new ReadOnlyNode(data, this.store)
 			}
 		}
 	}
@@ -343,7 +337,8 @@ export class RedBlackTree<K, V> {
 
 		let cmp = this.compare
 		// Find point to insert new node at
-		let n = this.getRoot()?.writable(transaction)
+		const root = this.getRoot()
+		let n = root ? root.writable(transaction) : undefined
 		let n_stack: Array<WritableNode<K, V>> = []
 		let d_stack: Array<number> = []
 		while (n) {
