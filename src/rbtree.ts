@@ -62,112 +62,128 @@ interface RBNodeData<K, V> {
 }
 
 export class RBNode<K, V> {
-	public readonly id: string
-
 	constructor(
-		private args: RBNodeData<K, V>,
+		public readonly id: string,
 		private store: RBNodeDataStore<K, V>
-	) {
-		this.id = args.id
-	}
+	) {}
 
-	save() {
-		this.store.set(this.args)
+	private get() {
+		const result = this.store.get(this.id)
+		if (!result) {
+			throw new Error("This shouldn't happen")
+		}
+		return result
 	}
 
 	get color() {
-		return this.args.color
+		return this.get().color
 	}
 
 	get key() {
-		return this.args.key
+		return this.get().key
 	}
 
 	get value() {
-		return this.args.value
+		return this.get().value
 	}
 
 	get count() {
-		return this.args.count
+		return this.get().count
 	}
 
 	get leftId() {
-		return this.args.leftId
+		return this.get().leftId
 	}
 
 	get rightId() {
-		return this.args.rightId
+		return this.get().rightId
 	}
 
 	// TODO: make these all immutable!
 	setColor(x: 0 | 1) {
-		// TODO: only save if it changed.
-		this.args.color = x
-		this.save()
+		this.store.set({
+			...this.get(),
+			color: x,
+		})
 	}
 
 	setKey(x: K) {
-		this.args.key = x
-		this.save()
+		this.store.set({
+			...this.get(),
+			key: x,
+		})
 	}
 
 	setValue(x: V) {
-		this.args.value = x
-		this.save()
+		this.store.set({
+			...this.get(),
+			value: x,
+		})
 	}
 
 	setCount(x: number) {
-		this.args.count = x
-		this.save()
+		this.store.set({
+			...this.get(),
+			count: x,
+		})
 	}
 
 	getLeft(): RBNode<K, V> | undefined {
-		if (this.args.leftId) {
-			const args = this.store.get(this.args.leftId)
+		const leftId = this.get().leftId
+		if (leftId) {
+			const args = this.store.get(leftId)
 			if (args) {
-				return new RBNode(args, this.store)
+				return new RBNode(leftId, this.store)
 			}
 		}
 	}
 
 	setLeft(x: RBNode<K, V> | undefined) {
 		if (x) {
-			this.args.leftId = x.id
+			this.store.set({
+				...this.get(),
+				leftId: x.id,
+			})
 		} else {
-			this.args.leftId = undefined
+			this.store.set({
+				...this.get(),
+				leftId: undefined,
+			})
 		}
-		this.save()
 	}
 
 	getRight(): RBNode<K, V> | undefined {
-		if (this.args.rightId) {
-			const args = this.store.get(this.args.rightId)
+		const rightId = this.get().rightId
+		if (rightId) {
+			const args = this.store.get(rightId)
 			if (args) {
-				return new RBNode(args, this.store)
+				return new RBNode(rightId, this.store)
 			}
 		}
 	}
 
 	setRight(x: RBNode<K, V> | undefined) {
 		if (x) {
-			this.args.rightId = x.id
+			this.store.set({
+				...this.get(),
+				rightId: x.id,
+			})
 		} else {
-			this.args.rightId = undefined
+			this.store.set({
+				...this.get(),
+				rightId: undefined,
+			})
 		}
-		this.save()
 	}
 
 	clone(args?: Partial<RBNodeData<K, V>>): RBNode<K, V> {
-		const newNode = new RBNode(
-			{
-				...this.args,
-				id: randomId(),
-				...args,
-			},
-			this.store
-		)
-		newNode.save()
-		return newNode
+		const newNode = {
+			...this.get(),
+			id: randomId(),
+			...args,
+		}
+		this.store.set(newNode)
+		return new RBNode(newNode.id, this.store)
 	}
 
 	repaint(color: 1 | 0) {
@@ -220,7 +236,7 @@ export class RedBlackTree<K, V> {
 		if (this.rootId) {
 			const data = this.store.get(this.rootId)
 			if (data) {
-				return new RBNode(data, this.store)
+				return new RBNode(this.rootId, this.store)
 			}
 		}
 	}
@@ -252,19 +268,17 @@ export class RedBlackTree<K, V> {
 			}
 		}
 		//Rebuild path to leaf node
-		const newNode = new RBNode(
-			{
-				id: randomId(),
-				color: RED,
-				key,
-				value,
-				leftId: undefined,
-				rightId: undefined,
-				count: 1,
-			},
-			this.store
-		)
-		newNode.save()
+		const newNodeData = {
+			id: randomId(),
+			color: RED,
+			key,
+			value,
+			leftId: undefined,
+			rightId: undefined,
+			count: 1,
+		}
+		this.store.set(newNodeData)
+		const newNode = new RBNode(newNodeData.id, this.store)
 		n_stack.push(newNode)
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
