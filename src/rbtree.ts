@@ -98,6 +98,19 @@ class RBNodeTransaction<K, V> {
 		}, this)
 	}
 
+	clone(node: ReadOnlyNode<K, V>): WritableNode<K, V> {
+		const newNode = {
+			id: randomId(),
+			color: node.color,
+			key: node.key,
+			value: node.value,
+			leftId: node.leftId,
+			rightId: node.rightId,
+			count: node.count,
+		}
+		return this.set(newNode)
+	}
+
 	from(node: ReadOnlyNode<K, V>): WritableNode<K, V> {
 		const id = node.id
 		this.cache[id] = {
