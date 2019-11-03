@@ -52,13 +52,13 @@ let RED = 0 as const
 let BLACK = 1 as const
 
 interface RBNodeData<K, V> {
-	id: string
-	color: 1 | 0
-	key: K
-	value: V
-	leftId: string | undefined
-	rightId: string | undefined
-	count: number
+	readonly id: string
+	readonly color: 1 | 0
+	readonly key: K
+	readonly value: V
+	readonly leftId: string | undefined
+	readonly rightId: string | undefined
+	readonly count: number
 }
 
 export class RBNode<K, V> {
