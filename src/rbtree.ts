@@ -53,30 +53,21 @@ class RBNodeDataStore<K, V> {
 
 class RBNodeTransaction<K, V> {
 	constructor(private store: RBNodeDataStore<K, V>) {}
-	private cache: Record<string, RBNodeData<K, V>> = {}
+	private cache: Record<string, RBNodeData<K, V> | undefined> = {}
 	private writes: Record<string, RBNodeData<K, V>> = {}
 
-	async get(id: string): Promise<WritableNode<K, V> | undefined> {
-		if (this.writes[id] || this.cache[id]) {
-			return new WritableNode(() => {
-				if (this.writes[id]) {
-					return this.writes[id]
-				} else {
-					return this.cache[id]
-				}
-			}, this)
+	// Transactions have a caching layer to improve performance and also
+	// return written data.
+	async get(id: string): Promise<RBNodeData<K, V> | undefined> {
+		if (id in this.writes) {
+			return this.writes[id]
+		}
+		if (id in this.cache) {
+			return this.cache[id]
 		}
 		const data = await this.store.get(id)
-		if (data) {
-			this.cache[id] = data
-			return new WritableNode(() => {
-				if (this.writes[id]) {
-					return this.writes[id]
-				} else {
-					return this.cache[id]
-				}
-			}, this)
-		}
+		this.cache[id] = data
+		return data
 	}
 
 	set(value: RBNodeData<K, V>): WritableNode<K, V> {
@@ -87,12 +78,18 @@ class RBNodeTransaction<K, V> {
 			if (this.writes[id]) {
 				return this.writes[id]
 			} else {
-				return this.cache[id]
+				throw new Error("Oops 3943")
 			}
 		}, this)
 	}
 
-	clone(node: ReadOnlyNode<K, V>): WritableNode<K, V> {
+	clone(node: undefined): undefined
+	clone(node: ReadOnlyNode<K, V>): WritableNode<K, V>
+	clone(node: ReadOnlyNode<K, V> | undefined): WritableNode<K, V> | undefined
+	clone(node: ReadOnlyNode<K, V> | undefined): WritableNode<K, V> | undefined {
+		if (node === undefined) {
+			return undefined
+		}
 		const newNode = {
 			id: randomId(),
 			color: node.color,
@@ -105,31 +102,12 @@ class RBNodeTransaction<K, V> {
 		return this.set(newNode)
 	}
 
-	from(node: ReadOnlyNode<K, V>): WritableNode<K, V> {
-		const id = node.id
-		this.cache[id] = {
-			id: node.id,
-			color: node.color,
-			key: node.key,
-			value: node.value,
-			leftId: node.leftId,
-			rightId: node.rightId,
-			count: node.count,
-		}
-		return new WritableNode(() => {
-			if (this.writes[id]) {
-				return this.writes[id]
-			} else {
-				return this.cache[id]
-			}
-		}, this)
-	}
-
 	async commit() {
 		for (const node of Object.values(this.writes)) {
 			await this.store.set(node)
 		}
-		this.writes = {}
+		// TODO: we should invalidate nodes after the transaction is commited!
+		// this.writes = {}
 	}
 }
 
@@ -159,7 +137,12 @@ export class ReadOnlyNode<K, V> {
 	readonly rightId: string | undefined
 	readonly count: number
 
-	constructor(data: RBNodeData<K, V>, private store: RBNodeDataStore<K, V>) {
+	constructor(
+		data: RBNodeData<K, V>,
+		private store: {
+			get(id: string): Promise<RBNodeData<K, V> | undefined>
+		}
+	) {
 		this.id = data.id
 		this.color = data.color
 		this.key = data.key
@@ -252,10 +235,13 @@ export class WritableNode<K, V> {
 		})
 	}
 
-	async getLeft(): Promise<WritableNode<K, V> | undefined> {
+	async getLeft(): Promise<ReadOnlyNode<K, V> | undefined> {
 		const leftId = this.get().leftId
 		if (leftId) {
-			return this.store.get(leftId)
+			const data = await this.store.get(leftId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
+			}
 		}
 	}
 
@@ -266,10 +252,13 @@ export class WritableNode<K, V> {
 		})
 	}
 
-	async getRight(): Promise<WritableNode<K, V> | undefined> {
+	async getRight(): Promise<ReadOnlyNode<K, V> | undefined> {
 		const rightId = this.get().rightId
 		if (rightId) {
-			return this.store.get(rightId)
+			const data = await this.store.get(rightId)
+			if (data) {
+				return new ReadOnlyNode(data, this.store)
+			}
 		}
 	}
 
@@ -278,19 +267,6 @@ export class WritableNode<K, V> {
 			...this.get(),
 			rightId: x,
 		})
-	}
-
-	clone(args?: Partial<RBNodeData<K, V>>): WritableNode<K, V> {
-		const newNode = {
-			...this.get(),
-			id: randomId(),
-			...args,
-		}
-		return this.store.set(newNode)
-	}
-
-	repaint(color: 1 | 0) {
-		return this.clone({ color })
 	}
 }
 
@@ -363,8 +339,7 @@ export class RedBlackTree<K, V> {
 
 		let cmp = this.compare
 		// Find point to insert new node at
-		const root = await this.getRoot()
-		let n = root ? transaction.from(root) : undefined
+		let n = transaction.clone(await this.getRoot())
 		let n_stack: Array<WritableNode<K, V>> = []
 		let d_stack: Array<number> = []
 		while (n) {
@@ -372,9 +347,9 @@ export class RedBlackTree<K, V> {
 			n_stack.push(n)
 			d_stack.push(d)
 			if (d <= 0) {
-				n = await n.getLeft()
+				n = transaction.clone(await n.getLeft())
 			} else {
-				n = await n.getRight()
+				n = transaction.clone(await n.getRight())
 			}
 		}
 		//Rebuild path to leaf node
@@ -391,15 +366,11 @@ export class RedBlackTree<K, V> {
 		for (let s = n_stack.length - 2; s >= 0; --s) {
 			let n = n_stack[s]
 			if (d_stack[s] <= 0) {
-				n_stack[s] = n.clone({
-					leftId: n_stack[s + 1] ? n_stack[s + 1].id : undefined,
-					count: n.count + 1,
-				})
+				n.setLeftId(n_stack[s + 1] ? n_stack[s + 1].id : undefined)
+				n.setCount(n.count + 1)
 			} else {
-				n_stack[s] = n.clone({
-					rightId: n_stack[s + 1] ? n_stack[s + 1].id : undefined,
-					count: n.count + 1,
-				})
+				n.setRightId(n_stack[s + 1] ? n_stack[s + 1].id : undefined)
+				n.setCount(n.count + 1)
 			}
 		}
 
@@ -428,7 +399,9 @@ export class RedBlackTree<K, V> {
 
 						//console.log("LLr")
 						p.setColor(BLACK)
-						pp.setRightId(y.repaint(BLACK).id)
+						const yy = transaction.clone(y)
+						yy.setColor(BLACK)
+						pp.setRightId(yy.id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
@@ -456,7 +429,9 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("LRr")
 						p.setColor(BLACK)
-						pp.setRightId(y.repaint(BLACK).id)
+						const yy = transaction.clone(y)
+						yy.setColor(BLACK)
+						pp.setRightId(yy.id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
@@ -489,7 +464,9 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("RRr", y.key)
 						p.setColor(BLACK)
-						pp.setLeftId(y.repaint(BLACK).id)
+						const yy = transaction.clone(y)
+						yy.setColor(BLACK)
+						pp.setLeftId(yy.id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
@@ -517,7 +494,9 @@ export class RedBlackTree<K, V> {
 					if (y && y.color === RED) {
 						//console.log("RLr")
 						p.setColor(BLACK)
-						pp.setLeftId(y.repaint(BLACK).id)
+						const yy = transaction.clone(y)
+						yy.setColor(BLACK)
+						pp.setLeftId(yy.id)
 						pp.setColor(RED)
 						s -= 1
 					} else {
@@ -895,29 +874,26 @@ export class RedBlackTreeIterator<K, V> {
 	//Removes item at iterator from tree
 	async remove(): Promise<RedBlackTree<K, V>> {
 		const transaction = new RBNodeTransaction(this.store)
-		let stack = this.stack.map(node => transaction.from(node))
+		let stack = this.stack
 		if (stack.length === 0) {
 			return this.tree
 		}
 		//First copy path to node
 		let cstack: Array<WritableNode<K, V>> = new Array(stack.length)
-		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = n.clone()
+		cstack[cstack.length - 1] = transaction.clone(stack[stack.length - 1])
 		for (let i = stack.length - 2; i >= 0; --i) {
 			let n = stack[i]
 			if (n.leftId === stack[i + 1].id) {
-				cstack[i] = n.clone({
-					leftId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				cstack[i] = transaction.clone(n)
+				cstack[i].setLeftId(cstack[i + 1] ? cstack[i + 1].id : undefined)
 			} else {
-				cstack[i] = n.clone({
-					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				cstack[i] = transaction.clone(n)
+				cstack[i].setRightId(cstack[i + 1] ? cstack[i + 1].id : undefined)
 			}
 		}
 
 		//Get node
-		n = cstack[cstack.length - 1]
+		let n = cstack[cstack.length - 1]
 		//console.log("start remove: ", n.value)
 
 		//If not leaf, then swap with previous node
@@ -928,23 +904,19 @@ export class RedBlackTreeIterator<K, V> {
 
 			//First walk to previous leaf
 			let split = cstack.length
-			n = left
-			while ((right = await n.getRight())) {
-				cstack.push(n)
-				n = right
+			let z = left
+			while ((right = await z.getRight())) {
+				cstack.push(transaction.clone(z))
+				z = right
 			}
 			//Copy path to leaf
-			let v = cstack[split - 1]
-			cstack.push(n.clone())
+			cstack.push(transaction.clone(z))
 			cstack[split - 1].setKey(n.key)
 			cstack[split - 1].setValue(n.value)
 
 			//Fix up stack
 			for (let i = cstack.length - 2; i >= split; --i) {
-				n = cstack[i]
-				cstack[i] = n.clone({
-					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				cstack[i].setRightId(cstack[i + 1] ? cstack[i + 1].id : undefined)
 			}
 			cstack[split - 1].setLeftId(cstack[split].id)
 		}
@@ -997,7 +969,7 @@ export class RedBlackTreeIterator<K, V> {
 					cstack[i].setCount(cstack[i].count - 1)
 				}
 				let parent = cstack[cstack.length - 2]
-				await fixDoubleBlack(cstack)
+				await fixDoubleBlack(cstack, transaction)
 				//Fix up links
 				if (parent.leftId === n.id) {
 					parent.setLeftId(undefined)
@@ -1114,25 +1086,22 @@ export class RedBlackTreeIterator<K, V> {
 	//Update value
 	async update(value: V) {
 		const transaction = new RBNodeTransaction(this.store)
-		let stack = this.stack.map(node => transaction.from(node))
+		let stack = this.stack
 		if (stack.length === 0) {
 			throw new Error("Can't update empty node!")
 		}
 		let cstack: Array<WritableNode<K, V>> = new Array(stack.length)
-		let n = stack[stack.length - 1]
-		cstack[cstack.length - 1] = n.clone({
-			value,
-		})
+		let n = transaction.clone(stack[stack.length - 1])
+		n.setValue(value)
+		cstack[cstack.length - 1] = n
 		for (let i = stack.length - 2; i >= 0; --i) {
-			n = stack[i]
+			n = transaction.clone(stack[i])
 			if (n.leftId === stack[i + 1].id) {
-				cstack[i] = n.clone({
-					leftId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				n.setLeftId(cstack[i + 1] ? cstack[i + 1].id : undefined)
+				cstack[i] = n
 			} else {
-				cstack[i] = n.clone({
-					rightId: cstack[i + 1] ? cstack[i + 1].id : undefined,
-				})
+				n.setRightId(cstack[i + 1] ? cstack[i + 1].id : undefined)
+				cstack[i] = n
 			}
 		}
 		await transaction.commit()
@@ -1164,7 +1133,7 @@ export class RedBlackTreeIterator<K, V> {
 }
 
 //Swaps two nodes
-function swapNode<K, V>(n: WritableNode<K, V>, v: WritableNode<K, V>) {
+function swapNode<K, V>(n: WritableNode<K, V>, v: ReadOnlyNode<K, V>) {
 	n.setKey(v.key)
 	n.setValue(v.value)
 	n.setLeftId(v.leftId)
@@ -1174,68 +1143,71 @@ function swapNode<K, V>(n: WritableNode<K, V>, v: WritableNode<K, V>) {
 }
 
 //Fix up a double black node in a tree
-async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
+async function fixDoubleBlack<K, V>(
+	stack: Array<WritableNode<K, V>>,
+	transaction: RBNodeTransaction<K, V>
+) {
 	for (let i = stack.length - 1; i >= 0; --i) {
-		let n = stack[i]
+		const n = stack[i]
 		if (i === 0) {
 			n.setColor(BLACK)
 			return
 		}
 		//console.log("visit node:", n.key, i, stack[i].key, stack[i-1].key)
-		let p = stack[i - 1]
+		const p = stack[i - 1]
 		if (p.leftId === n.id) {
 			//console.log("left child")
-			let s = await p.getRight()
+			const s = await p.getRight()
 			if (!s) {
 				throw new Error("This cannot happen")
 			}
 			const right = await s.getRight()
 			if (right && right.color === RED) {
 				//console.log("case 1: right sibling child red")
-				s = s.clone()
-				p.setRightId(s.id)
-				let z = right.clone()
-				s.setRightId(z.id)
-				p.setRightId(s.leftId)
-				s.setLeftId(p.id)
-				s.setRightId(z.id)
-				s.setColor(p.color)
+				const ss = transaction.clone(s)
+				p.setRightId(ss.id)
+				const z = transaction.clone(right)
+				ss.setRightId(z.id)
+				p.setRightId(ss.leftId)
+				ss.setLeftId(p.id)
+				ss.setRightId(z.id)
+				ss.setColor(p.color)
 				n.setColor(BLACK)
 				p.setColor(BLACK)
 				z.setColor(BLACK)
 				await recount(p)
-				await recount(s)
+				await recount(ss)
 				if (i > 1) {
-					let pp = stack[i - 2]
+					const pp = stack[i - 2]
 					if (pp.leftId === p.id) {
-						pp.setLeftId(s.id)
+						pp.setLeftId(ss.id)
 					} else {
-						pp.setRightId(s.id)
+						pp.setRightId(ss.id)
 					}
 				}
-				stack[i - 1] = s
+				stack[i - 1] = ss
 				return
 			} else {
 				const left = await s.getLeft()
 				if (left && left.color === RED) {
 					//console.log("case 1: left sibling child red")
-					s = s.clone()
-					p.setRightId(s.id)
-					let z = left.clone()
-					s.setLeftId(z.id)
+					const ss = transaction.clone(s)
+					p.setRightId(ss.id)
+					const z = transaction.clone(left)
+					ss.setLeftId(z.id)
 					p.setRightId(z.leftId)
-					s.setLeftId(z.rightId)
+					ss.setLeftId(z.rightId)
 					z.setLeftId(p.id)
-					z.setRightId(s.id)
+					z.setRightId(ss.id)
 					z.setColor(p.color)
 					p.setColor(BLACK)
-					s.setColor(BLACK)
+					ss.setColor(BLACK)
 					n.setColor(BLACK)
 					await recount(p)
-					await recount(s)
+					await recount(ss)
 					await recount(z)
 					if (i > 1) {
-						let pp = stack[i - 2]
+						const pp = stack[i - 2]
 						if (pp.leftId === p.id) {
 							pp.setLeftId(z.id)
 						} else {
@@ -1250,31 +1222,35 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent", p.right.value)
 					p.setColor(BLACK)
-					p.setRightId(s.repaint(RED).id)
+					const ss = transaction.clone(s)
+					ss.setColor(RED)
+					p.setRightId(ss.id)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent", p.right.value)
-					p.setRightId(s.repaint(RED).id)
+					const ss = transaction.clone(s)
+					ss.setColor(RED)
+					p.setRightId(ss.id)
 					continue
 				}
 			} else {
 				//console.log("case 3: red sibling")
-				s = s.clone()
-				p.setRightId(s.leftId)
-				s.setLeftId(p.id)
-				s.setColor(p.color)
+				const ss = transaction.clone(s)
+				p.setRightId(ss.leftId)
+				ss.setLeftId(p.id)
+				ss.setColor(p.color)
 				p.setColor(RED)
 				await recount(p)
-				await recount(s)
+				await recount(ss)
 				if (i > 1) {
-					let pp = stack[i - 2]
+					const pp = stack[i - 2]
 					if (pp.leftId === p.id) {
-						pp.setLeftId(s.id)
+						pp.setLeftId(ss.id)
 					} else {
-						pp.setRightId(s.id)
+						pp.setRightId(ss.id)
 					}
 				}
-				stack[i - 1] = s
+				stack[i - 1] = ss
 				stack[i] = p
 				if (i + 1 < stack.length) {
 					stack[i + 1] = n
@@ -1285,54 +1261,54 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 			}
 		} else {
 			//console.log("right child")
-			let s = await p.getLeft()
+			const s = await p.getLeft()
 			if (!s) {
 				throw new Error("This cannot happen")
 			}
 			const left = await s.getLeft()
 			if (left && left.color === RED) {
 				//console.log("case 1: left sibling child red", p.value, p._color)
-				s = s.clone()
-				p.setLeftId(s.id)
-				let z = left.clone()
-				s.setLeftId(z.id)
-				p.setLeftId(s.rightId)
-				s.setRightId(p.id)
-				s.setLeftId(z.id)
-				s.setColor(p.color)
+				const ss = transaction.clone(s)
+				p.setLeftId(ss.id)
+				const z = transaction.clone(left)
+				ss.setLeftId(z.id)
+				p.setLeftId(ss.rightId)
+				ss.setRightId(p.id)
+				ss.setLeftId(z.id)
+				ss.setColor(p.color)
 				n.setColor(BLACK)
 				p.setColor(BLACK)
 				z.setColor(BLACK)
 				await recount(p)
-				await recount(s)
+				await recount(ss)
 				if (i > 1) {
-					let pp = stack[i - 2]
+					const pp = stack[i - 2]
 					if (pp.rightId === p.id) {
-						pp.setRightId(s.id)
+						pp.setRightId(ss.id)
 					} else {
-						pp.setLeftId(s.id)
+						pp.setLeftId(ss.id)
 					}
 				}
-				stack[i - 1] = s
+				stack[i - 1] = ss
 				return
 			} else {
 				const right = await s.getRight()
 				if (right && right.color === RED) {
 					//console.log("case 1: right sibling child red")
-					s = s.clone()
-					p.setLeftId(s.id)
-					let z = right.clone()
-					s.setRightId(z.id)
+					const ss = transaction.clone(s)
+					p.setLeftId(ss.id)
+					const z = transaction.clone(right)
+					ss.setRightId(z.id)
 					p.setLeftId(z.rightId)
-					s.setRightId(z.leftId)
+					ss.setRightId(z.leftId)
 					z.setRightId(p.id)
-					z.setLeftId(s.id)
+					z.setLeftId(ss.id)
 					z.setColor(p.color)
 					p.setColor(BLACK)
-					s.setColor(BLACK)
+					ss.setColor(BLACK)
 					n.setColor(BLACK)
 					await recount(p)
-					await recount(s)
+					await recount(ss)
 					await recount(z)
 					if (i > 1) {
 						let pp = stack[i - 2]
@@ -1350,31 +1326,35 @@ async function fixDoubleBlack<K, V>(stack: Array<WritableNode<K, V>>) {
 				if (p.color === RED) {
 					//console.log("case 2: black sibling, red parent")
 					p.setColor(BLACK)
-					p.setLeftId(s.repaint(RED).id)
+					const ss = transaction.clone(s)
+					ss.setColor(RED)
+					p.setLeftId(ss.id)
 					return
 				} else {
 					//console.log("case 2: black sibling, black parent")
-					p.setLeftId(s.repaint(RED).id)
+					const ss = transaction.clone(s)
+					ss.setColor(RED)
+					p.setLeftId(ss.id)
 					continue
 				}
 			} else {
 				//console.log("case 3: red sibling")
-				s = s.clone()
-				p.setLeftId(s.rightId)
-				s.setRightId(p.id)
-				s.setColor(p.color)
+				const ss = transaction.clone(s)
+				p.setLeftId(ss.rightId)
+				ss.setRightId(p.id)
+				ss.setColor(p.color)
 				p.setColor(RED)
 				await recount(p)
-				await recount(s)
+				await recount(ss)
 				if (i > 1) {
 					let pp = stack[i - 2]
 					if (pp.rightId === p.id) {
-						pp.setRightId(s.id)
+						pp.setRightId(ss.id)
 					} else {
-						pp.setLeftId(s.id)
+						pp.setLeftId(ss.id)
 					}
 				}
-				stack[i - 1] = s
+				stack[i - 1] = ss
 				stack[i] = p
 				if (i + 1 < stack.length) {
 					stack[i + 1] = n
