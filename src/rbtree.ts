@@ -106,8 +106,8 @@ class RBNodeTransaction<K, V> {
 		for (const node of Object.values(this.writes)) {
 			await this.store.set(node)
 		}
-		// TODO: we should invalidate nodes after the transaction is commited!
-		// this.writes = {}
+		// Writable nodes can no longer be accessed after the transaction is written.
+		this.writes = {}
 	}
 }
 
@@ -527,8 +527,9 @@ export class RedBlackTree<K, V> {
 		}
 		//Return new tree
 		n_stack[0].setColor(BLACK)
+		const newRootId = n_stack[0].id
 		await transaction.commit()
-		return new RedBlackTree({ compare: cmp, rootId: n_stack[0].id }, this.store)
+		return new RedBlackTree({ compare: cmp, rootId: newRootId }, this.store)
 	}
 
 	async forEach<T>(
@@ -937,8 +938,9 @@ export class RedBlackTreeIterator<K, V> {
 			for (let i = 0; i < cstack.length; ++i) {
 				cstack[i].setCount(cstack[i].count - 1)
 			}
+			const newRootId = cstack[0].id
 			await transaction.commit()
-			return this.tree.clone(cstack[0].id)
+			return this.tree.clone(newRootId)
 		} else {
 			const left = await n.getLeft()
 			const right = await n.getRight()
@@ -955,8 +957,9 @@ export class RedBlackTreeIterator<K, V> {
 				for (let i = 0; i < cstack.length - 1; ++i) {
 					cstack[i].setCount(cstack[i].count - 1)
 				}
+				const newRootId = cstack[0].id
 				await transaction.commit()
-				return this.tree.clone(cstack[0].id)
+				return this.tree.clone(newRootId)
 			} else if (cstack.length === 1) {
 				//Third easy case: root
 				//console.log("ROOT")
@@ -978,8 +981,9 @@ export class RedBlackTreeIterator<K, V> {
 				}
 			}
 		}
+		const newRootId = cstack[0].id
 		await transaction.commit()
-		return this.tree.clone(cstack[0].id)
+		return this.tree.clone(newRootId)
 	}
 
 	//Returns key
@@ -1104,8 +1108,9 @@ export class RedBlackTreeIterator<K, V> {
 				cstack[i] = n
 			}
 		}
+		const newRootId = cstack[0].id
 		await transaction.commit()
-		return this.tree.clone(cstack[0].id)
+		return this.tree.clone(newRootId)
 	}
 
 	//Moves iterator backward one element
