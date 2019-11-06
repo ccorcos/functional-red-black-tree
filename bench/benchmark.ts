@@ -1,7 +1,7 @@
 import { performance } from "perf_hooks"
 import * as _ from "lodash"
 
-interface BenchDb {
+export interface BenchDb {
 	get(key: string): Promise<string | undefined>
 	// getBatch(keys: Array<string>): Promise<Array<string | undefined>>
 	set(key: string, value: string): Promise<void>
