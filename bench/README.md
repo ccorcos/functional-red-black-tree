@@ -212,4 +212,4 @@ It even blows up with manual GC
 
 Could try assembly script with better memory management features https://docs.assemblyscript.org/d
 
-Whoa, it looks like using maps is way better for memory...
+- try random things to make the GC happier.
