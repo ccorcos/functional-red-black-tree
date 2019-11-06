@@ -19,7 +19,7 @@ function randomId() {
 const RED = 0 as const
 const BLACK = 1 as const
 
-interface NodeData<K, V> {
+export interface NodeData<K, V> {
 	readonly id: string
 	readonly color: 1 | 0
 	readonly key: K
@@ -29,7 +29,7 @@ interface NodeData<K, V> {
 	readonly count: number
 }
 
-interface NodeStorage<K, V> {
+export interface NodeStorage<K, V> {
 	get(id: string): Promise<NodeData<K, V> | undefined>
 	set(node: NodeData<K, V>): Promise<void>
 	delete(id: string): Promise<void>
@@ -1407,7 +1407,7 @@ async function fixDoubleBlack<K, V>(
 /**
  * Default comparison function.
  */
-function defaultCompare<K>(a: K, b: K) {
+export function defaultCompare<K>(a: K, b: K) {
 	if (a < b) {
 		return -1
 	}
