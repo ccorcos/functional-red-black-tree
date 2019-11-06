@@ -1,6 +1,6 @@
 import { performance } from "perf_hooks"
 import * as _ from "lodash"
-import level from "level"
+import * as level from "level"
 import {
 	RedBlackTree,
 	defaultCompare,
@@ -48,7 +48,7 @@ class BetterLevelDb {
 			if (result === undefined) {
 				return
 			}
-			return JSON.parse(result)
+			return result
 		} catch (error) {
 			if (error.notFound) {
 				return
@@ -97,7 +97,7 @@ class LevelDbNodeStorage<K, V> implements NodeStorage<K, V> {
 }
 
 class TreeDb implements BenchDb {
-	db = new BetterLevelDb("./chet-leveldb")
+	db = new BetterLevelDb("./chet.leveldb")
 	nodeStorage = new LevelDbNodeStorage<string, string>(this.db)
 
 	private tree: RedBlackTree<string, string> | undefined
@@ -107,11 +107,12 @@ class TreeDb implements BenchDb {
 		}
 
 		// Change the root key and you can have many trees!
-		const nodeId = await this.db.get("root")
+		// const nodeId = await this.db.get("root")
 		this.tree = new RedBlackTree<string, string>(
 			{
 				compare: defaultCompare,
-				rootId: nodeId,
+				// rootId: nodeId,
+				rootId: undefined,
 			},
 			this.nodeStorage
 		)
@@ -147,6 +148,9 @@ function random() {
 }
 
 class Timer {
+	constructor(private label: string) {
+		// this.start()
+	}
 	times: Array<number> = []
 	t = performance.now()
 	next() {
@@ -154,39 +158,55 @@ class Timer {
 		this.times.push(t2 - this.t)
 		this.t = t2
 	}
+	timer: NodeJS.Timeout | undefined
+	start() {
+		this.timer = setInterval(this.log, 1_000)
+	}
+	stop() {
+		this.log()
+		if (this.timer === undefined) {
+			return
+		}
+		clearInterval(this.timer)
+		this.timer = undefined
+	}
+	log = () => {
+		if (this.times.length === 0) {
+			return
+		}
+		console.log(this.label, {
+			min: _.min(this.times).toFixed(3) + " ms",
+			max: _.max(this.times).toFixed(3) + " ms",
+			avg: (_.sum(this.times) / this.times.length).toFixed(3) + " ms",
+		})
+	}
 }
 
+const iterations = 10_000
+
 async function benchmark(label: string, db: BenchDb) {
-	const sets = new Timer()
+	const sets = new Timer(label + ": sets")
 	const keys: Array<string> = []
-	for (var i = 0; i < 100_000; ++i) {
+	for (var i = 0; i < iterations; i++) {
 		const key = random()
 		keys.push(key)
 		await db.set(key, random())
 		sets.next()
 	}
+	sets.stop()
 
-	const gets = new Timer()
-	for (var i = 0; i < 100_000; ++i) {
+	const gets = new Timer(label + ": gets")
+	for (var i = 0; i < iterations; i++) {
 		await db.get(keys[i])
-		sets.next()
+		gets.next()
 	}
-
-	console.log(label, "set", {
-		min: _.min(sets.times),
-		max: _.max(sets.times),
-		avg: _.sum(sets.times) / sets.times.length,
-	})
-
-	console.log(label, "get", {
-		min: _.min(gets.times),
-		max: _.max(gets.times),
-		avg: _.sum(gets.times) / gets.times.length,
-	})
+	gets.stop()
 }
 
 async function main() {
+	console.log("starting")
 	await benchmark("treedb", new TreeDb())
+	console.log("done")
 }
 
 main()
