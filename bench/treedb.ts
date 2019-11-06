@@ -1,45 +1,8 @@
 import { performance } from "perf_hooks"
 import * as _ from "lodash"
-import { RedBlackTree } from "../src/rbtree"
+import { TreeDb } from "../src/treedb"
 import { LevelDb, LevelDbNodeStorage } from "../storage/leveldb"
 import { compare } from "../src/utils"
-
-class TreeDb implements BenchDb {
-	db = new LevelDb("./chet.leveldb")
-	nodeStorage = new LevelDbNodeStorage<string, string>(this.db)
-
-	private tree: RedBlackTree<string, string> | undefined
-	async getTree() {
-		if (this.tree) {
-			return this.tree
-		}
-
-		// Change the root key and you can have many trees!
-		// const nodeId = await this.db.get("root")
-		this.tree = new RedBlackTree<string, string>(
-			{
-				compare: compare,
-				// rootId: nodeId,
-				rootId: undefined,
-			},
-			this.nodeStorage
-		)
-		return this.tree
-	}
-
-	async get(key: string): Promise<string | undefined> {
-		const tree = await this.getTree()
-		const node = (await tree.find(key)).node
-		if (node) {
-			return node.value
-		}
-	}
-
-	async set(key: string, value: string): Promise<void> {
-		const tree = await this.getTree()
-		this.tree = await tree.insert(key, JSON.stringify(value))
-	}
-}
 
 interface BenchDb {
 	get(key: string): Promise<string | undefined>
@@ -113,7 +76,13 @@ async function benchmark(label: string, db: BenchDb) {
 
 async function main() {
 	console.log("starting")
-	await benchmark("treedb", new TreeDb())
+	await benchmark(
+		"treedb",
+		new TreeDb<string, string>({
+			storage: new LevelDbNodeStorage(new LevelDb("./chet.leveldb")),
+			compare: compare,
+		})
+	)
 	console.log("done")
 }
 
