@@ -23,10 +23,9 @@
     "build"
   ],
   "scripts": {
-    "clean": "rm -rf build",
-    "build": "tsc",
+    "build": "rm -rf build && tsc",
     "test": "tsc && tape build/test/*.js",
-    "bench": "ts-node bench/leveldb.ts && ts-node bench/sqlite.ts && ts-node bench/treedb.ts"
+    "bench": "ts-node bench/leveldb.ts && ts-node bench/sqlite.ts && node --max_old_space_size=2048 -r ts-node/register bench/treedb.ts"
   },
   "repository": {
     "type": "git",

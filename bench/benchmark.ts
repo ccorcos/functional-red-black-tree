@@ -1,6 +1,8 @@
 import { performance } from "perf_hooks"
 import * as _ from "lodash"
 
+const iterations = 100_000
+
 export interface BenchDb {
 	get(key: string): Promise<string | undefined>
 	// getBatch(keys: Array<string>): Promise<Array<string | undefined>>
@@ -49,8 +51,6 @@ class Timer {
 		})
 	}
 }
-
-const iterations = 10_000
 
 export async function benchmark(label: string, db: BenchDb) {
 	const sets = new Timer(label + ": sets")
