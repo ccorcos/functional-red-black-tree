@@ -64,19 +64,19 @@ class Timer {
 
 export async function benchmark(label: string, db: BenchDb) {
 	const sets = new Timer(label + ": sets")
-	// const keys: Array<string> = []
+	const keys: Array<string> = []
 	for (var i = 0; i < iterations; i++) {
 		const key = random()
-		// keys.push(key)
+		keys.push(key)
 		await db.set(key, random())
 		sets.next()
 	}
 	sets.stop()
 
-	// const gets = new Timer(label + ": gets")
-	// for (var i = 0; i < iterations; i++) {
-	// 	await db.get(keys[i])
-	// 	gets.next()
-	// }
-	// gets.stop()
+	const gets = new Timer(label + ": gets")
+	for (var i = 0; i < iterations; i++) {
+		await db.get(keys[i])
+		gets.next()
+	}
+	gets.stop()
 }

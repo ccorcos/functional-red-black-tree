@@ -158,3 +158,58 @@ At some point, it's all over... Not every time though.
 [50801:0x103b26000]    67296 ms: Scavenge 90.5 (155.2) -> 76.4 (155.2) MB, 10.7 / 0.0 ms  (average mu = 0.988, current mu = 0.987) allocation failure
 [50801:0x103b26000]    67334 ms: Mark-sweep 87.5 (155.2) -> 68.3 (117.9) MB, 7.7 / 0.0 ms  (+ 19.6 ms in 172 steps since start of marking, biggest step 0.6 ms, walltime since start of marking 100 ms) (average mu = 0.964, current mu = 0.942) finalize incremental marking via stack guard GC in old space requested
 ```
+
+
+
+Testing with manual gc using `--expose-gc` flag
+
+```
+global.gc()
+```
+
+https://www.npmjs.com/package/v8-profiler
+
+
+- [ ] visits are recursive and we don't have tail-call optimization
+
+
+It even blows up with manual GC
+
+```
+[51030:0x103b26000]   291157 ms: Mark-sweep 5.3 (40.7) -> 4.9 (40.7) MB, 1.9 / 0.0 ms  (average mu = 0.599, current mu = 0.639) testing GC in old space requested
+[51030:0x103b26000]   291162 ms: Mark-sweep 5.3 (40.7) -> 5.0 (40.7) MB, 2.2 / 0.0 ms  (average mu = 0.602, current mu = 0.605) testing GC in old space requested
+[51030:0x103b26000]   291167 ms: Mark-sweep 5.3 (40.7) -> 4.9 (40.7) MB, 2.1 / 0.0 ms  (average mu = 0.582, current mu = 0.560) testing GC in old space requested
+[51030:0x103b26000]   291174 ms: Mark-sweep 5.4 (40.7) -> 4.9 (40.7) MB, 3.9 / 0.0 ms  (average mu = 0.503, current mu = 0.446) testing GC in old space requested
+[51030:0x103b26000]   291202 ms: Scavenge 20.8 (40.7) -> 6.3 (40.7) MB, 1.2 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291225 ms: Scavenge 20.9 (40.7) -> 7.5 (41.2) MB, 1.2 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291235 ms: Scavenge 21.9 (41.2) -> 8.6 (43.7) MB, 1.5 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291248 ms: Scavenge 24.1 (43.7) -> 10.5 (45.2) MB, 2.2 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291259 ms: Scavenge 26.0 (45.2) -> 12.0 (47.2) MB, 1.3 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291268 ms: Scavenge 27.1 (47.2) -> 13.3 (48.2) MB, 1.2 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291282 ms: Scavenge 29.4 (49.8) -> 15.7 (50.8) MB, 2.0 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291293 ms: Scavenge 30.6 (50.8) -> 17.2 (51.3) MB, 1.2 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291304 ms: Scavenge 33.0 (52.8) -> 19.3 (54.8) MB, 1.7 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291316 ms: Scavenge 34.8 (55.3) -> 20.7 (55.8) MB, 1.7 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291326 ms: Scavenge 35.7 (55.8) -> 21.5 (56.3) MB, 1.1 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291335 ms: Scavenge 36.5 (56.3) -> 23.1 (57.8) MB, 1.2 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291347 ms: Scavenge 37.4 (57.8) -> 23.9 (58.8) MB, 2.4 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291362 ms: Scavenge 42.0 (61.8) -> 27.8 (62.8) MB, 1.5 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291375 ms: Scavenge 42.8 (62.8) -> 28.7 (64.3) MB, 1.6 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291387 ms: Scavenge 43.7 (64.3) -> 29.6 (64.8) MB, 1.4 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291404 ms: Scavenge 44.6 (64.8) -> 30.5 (65.8) MB, 2.7 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291428 ms: Scavenge 49.6 (70.0) -> 35.5 (71.0) MB, 2.3 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291445 ms: Scavenge 50.5 (71.0) -> 36.4 (71.5) MB, 1.8 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291461 ms: Scavenge 51.4 (71.5) -> 37.3 (73.0) MB, 1.8 / 0.0 ms  (average mu = 0.503, current mu = 0.446) allocation failure
+[51030:0x103b26000]   291463 ms: Mark-sweep 37.4 (73.0) -> 31.7 (72.0) MB, 1.3 / 0.0 ms  (+ 3.0 ms in 16 steps since start of marking, biggest step 1.1 ms, walltime since start of marking 76 ms) (average mu = 0.976, current mu = 0.986) finalize incremental marking via stack guard GC in old space requested
+[51030:0x103b26000]   291474 ms: Scavenge 47.5 (72.0) -> 32.7 (72.0) MB, 1.5 / 0.0 ms  (average mu = 0.976, current mu = 0.986) allocation failure
+[51030:0x103b26000]   291484 ms: Scavenge 47.6 (72.0) -> 33.5 (72.5) MB, 1.3 / 0.0 ms  (average mu = 0.976, current mu = 0.986) allocation failure
+[51030:0x103b26000]   291496 ms: Scavenge 49.5 (73.5) -> 35.4 (76.0) MB, 1.3 / 0.0 ms  (average mu = 0.976, current mu = 0.986) allocation failure
+[51030:0x103b26000]   291508 ms: Scavenge 50.4 (76.0) -> 36.3 (78.5) MB, 2.1 / 0.0 ms  (average mu = 0.976, current mu = 0.986) allocation failure
+[51030:0x103b26000]   291520 ms: Scavenge 51.3 (78.5) -> 37.1 (81.0) MB, 1.5 / 0.0 ms  (average mu = 0.976, current mu = 0.986) allocation failure
+```
+
+- [ ] try memwatch https://www.npmjs.com/package/node-memwatch
+
+Could try assembly script with better memory management features https://docs.assemblyscript.org/d
+
+Whoa, it looks like using maps is way better for memory...
