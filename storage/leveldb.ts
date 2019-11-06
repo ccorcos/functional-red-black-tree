@@ -1,4 +1,5 @@
 import * as level from "level"
+import { NodeData, NodeStorage } from "../src/rbtree"
 
 interface LevelUp {
 	put(key: string, value: string): Promise<void>
@@ -50,5 +51,25 @@ export class LevelDb {
 				throw error
 			}
 		}
+	}
+}
+
+export class LevelDbNodeStorage<K, V> implements NodeStorage<K, V> {
+	constructor(private db: LevelDb) {}
+
+	async get(id: string): Promise<NodeData<K, V> | undefined> {
+		const result = await this.db.get(id)
+		if (result === undefined) {
+			return
+		}
+		return JSON.parse(result)
+	}
+
+	async set(node: NodeData<K, V>): Promise<void> {
+		await this.db.put(node.id, JSON.stringify(node))
+	}
+
+	async delete(id: string): Promise<void> {
+		await this.db.del(id)
 	}
 }

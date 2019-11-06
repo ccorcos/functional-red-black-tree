@@ -1,3 +1,6 @@
+
+// TODO: TreeStorage... IndexStorage... All different interfaces.
+
 - compare
 	- raw leveldb
 	- sqlite

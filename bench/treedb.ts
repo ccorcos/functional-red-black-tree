@@ -1,33 +1,8 @@
 import { performance } from "perf_hooks"
 import * as _ from "lodash"
-import {
-	RedBlackTree,
-	defaultCompare,
-	NodeStorage,
-	NodeData,
-} from "../src/rbtree"
-import { LevelDb } from "../storage/leveldb"
-
-// TODO: TreeStorage... IndexStorage... All different interfaces.
-class LevelDbNodeStorage<K, V> implements NodeStorage<K, V> {
-	constructor(private db: LevelDb) {}
-
-	async get(id: string): Promise<NodeData<K, V> | undefined> {
-		const result = await this.db.get(id)
-		if (result === undefined) {
-			return
-		}
-		return JSON.parse(result)
-	}
-
-	async set(node: NodeData<K, V>): Promise<void> {
-		await this.db.put(node.id, JSON.stringify(node))
-	}
-
-	async delete(id: string): Promise<void> {
-		await this.db.del(id)
-	}
-}
+import { RedBlackTree } from "../src/rbtree"
+import { LevelDb, LevelDbNodeStorage } from "../storage/leveldb"
+import { compare } from "../src/utils"
 
 class TreeDb implements BenchDb {
 	db = new LevelDb("./chet.leveldb")
@@ -43,7 +18,7 @@ class TreeDb implements BenchDb {
 		// const nodeId = await this.db.get("root")
 		this.tree = new RedBlackTree<string, string>(
 			{
-				compare: defaultCompare,
+				compare: compare,
 				// rootId: nodeId,
 				rootId: undefined,
 			},

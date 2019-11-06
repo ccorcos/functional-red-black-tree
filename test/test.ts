@@ -1,11 +1,21 @@
-import makeTree, {
-	RedBlackTree,
-	ReadOnlyNode,
-	RedBlackTreeIterator,
-} from "../src/rbtree"
+import { RedBlackTree, ReadOnlyNode, RedBlackTreeIterator } from "../src/rbtree"
 import * as tape from "tape"
 import * as util from "util"
+import { InMemoryKeyValueStore, InMemoryNodeStorage } from "../storage/memory"
+import { compare } from "../src/utils"
 const iota = require("iota-array") as (n: number) => Array<number>
+
+const store = new InMemoryKeyValueStore()
+const nodeStore = new InMemoryNodeStorage<any, any>(store)
+function makeTree<K, V>() {
+	return new RedBlackTree<K, V>(
+		{
+			compare: compare,
+			rootId: undefined,
+		},
+		nodeStore
+	)
+}
 
 var COLORS = ["r", "b", "bb"]
 

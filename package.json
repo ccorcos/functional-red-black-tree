@@ -23,7 +23,8 @@
   "scripts": {
     "clean": "rm -rf build",
     "build": "tsc",
-    "test": "tsc && tape build/test/*.js"
+    "test": "tsc && tape build/test/*.js",
+    "bench": "ts-node bench/run.ts"
   },
   "repository": {
     "type": "git",

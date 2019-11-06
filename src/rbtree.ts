@@ -11,10 +11,7 @@
 
 */
 
-// TODO: use UUID!
-function randomId() {
-	return Math.round(Math.random() * 1e10).toString()
-}
+import { randomId } from "./utils"
 
 const RED = 0 as const
 const BLACK = 1 as const
@@ -35,7 +32,7 @@ export interface NodeStorage<K, V> {
 	delete(id: string): Promise<void>
 }
 
-interface ReadOnlyStorage<K, V> {
+interface ReadOnlyNodeStorage<K, V> {
 	get(id: string): Promise<NodeData<K, V> | undefined>
 }
 
@@ -52,7 +49,7 @@ export class ReadOnlyNode<K, V> {
 	readonly rightId: string | undefined
 	readonly count: number
 
-	constructor(data: NodeData<K, V>, private store: ReadOnlyStorage<K, V>) {
+	constructor(data: NodeData<K, V>, private store: ReadOnlyNodeStorage<K, V>) {
 		this.id = data.id
 		this.color = data.color
 		this.key = data.key
@@ -1403,61 +1400,3 @@ async function fixDoubleBlack<K, V>(
 		}
 	}
 }
-
-/**
- * Default comparison function.
- */
-export function defaultCompare<K>(a: K, b: K) {
-	if (a < b) {
-		return -1
-	}
-	if (a > b) {
-		return 1
-	}
-	return 0
-}
-
-//Build a tree
-
-class InMemoryKeyValueStore {
-	private map: Record<string, string> = {}
-	async get(key: string) {
-		return this.map[key]
-	}
-	async set(key: string, value: string) {
-		this.map[key] = value
-	}
-	async delete(key: string) {
-		delete this.map[key]
-	}
-}
-
-class InMemoryNodeStorage<K, V> implements NodeStorage<K, V> {
-	constructor(private store: InMemoryKeyValueStore) {}
-	async get(id: string) {
-		const result = await this.store.get(id)
-		if (result !== undefined) {
-			return JSON.parse(result)
-		}
-	}
-	async set(node: NodeData<K, V>) {
-		await this.store.set(node.id, JSON.stringify(node))
-	}
-	async delete(id: string) {
-		await this.store.delete(id)
-	}
-}
-
-const store = new InMemoryKeyValueStore()
-const nodeStore = new InMemoryNodeStorage<any, any>(store)
-function createRBTree<K, V>(compare?: (a: K, b: K) => number) {
-	return new RedBlackTree<K, V>(
-		{
-			compare: compare || defaultCompare,
-			rootId: undefined,
-		},
-		nodeStore
-	)
-}
-
-export default createRBTree
